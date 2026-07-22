@@ -1,0 +1,14 @@
+{
+  "name": "auto-post-youtube",
+  "version": "1.0.0",
+  "description": "Automate YouTube video upload with scheduled publish time using Playwright + Firefox",
+  "type": "module",
+  "scripts": {
+    "upload": "node upload.js",
+    "postinstall": "npx playwright install firefox"
+  },
+  "dependencies": {
+    "playwright": "^1.52.0",
+    "dotenv": "^16.4.7"
+  }
+}
