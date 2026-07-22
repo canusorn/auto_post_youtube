@@ -24,6 +24,8 @@ if (videos.length === 0) {
 const args = process.argv.slice(2);
 let startTime = null;
 let intervalMs = null;
+let defaultTitle = "";
+let defaultDescription = "";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--start" && args[i + 1]) {
@@ -44,6 +46,12 @@ for (let i = 0; i < args.length; i++) {
     const unit = match[2];
     const multipliers = { m: 60000, h: 3600000, d: 86400000 };
     intervalMs = num * (multipliers[unit] || 0);
+  }
+  if (args[i] === "--title" && args[i + 1]) {
+    defaultTitle = args[++i];
+  }
+  if (args[i] === "--description" && args[i + 1]) {
+    defaultDescription = args[++i];
   }
 }
 
@@ -121,10 +129,13 @@ for (let i = 0; i < videos.length; i++) {
     nextTime = new Date(nextTime.getTime() + intervalMs);
   }
 
+  const rowTitle = prev.title || defaultTitle.replace(/\{n\}/g, String(i + 1)).replace(/\{name\}/g, path.parse(v).name);
+  const rowDesc = prev.description || defaultDescription.replace(/\{n\}/g, String(i + 1)).replace(/\{name\}/g, path.parse(v).name);
+
   rows.push([
     v,
-    prev.title || "",
-    prev.description || "",
+    rowTitle,
+    rowDesc,
     prev.tags || "",
     pub,
   ]);
@@ -138,12 +149,19 @@ console.log(rows[0].join(" | "));
 console.log("-".repeat(80));
 let skipped = 0;
 for (let i = 1; i < rows.length; i++) {
-  const marker = rows[i][4] ? "" : " (no schedule)";
+  const marker = rows[i][4] ? ` @ ${rows[i][4]}` : " (immediate)";
+  const label = rows[i][1] ? `${rows[i][1]} (${rows[i][0]})` : rows[i][0];
   if (rows[i][4]) skipped++;
-  console.log(`${String(i).padStart(2)}. ${rows[i][0]}${marker}`);
+  console.log(`  ${i}. ${label}${marker}`);
 }
 if (startTime && intervalMs) {
   const total = intervalMs * (videos.length - 1);
   console.log(`\nSchedule range: ${rows[1]?.[4] || "?"} → ${rows[rows.length - 1]?.[4] || "?"}`);
 }
 console.log(`\nEdit ${CSV_FILE} to customize per-file title, description, tags, and publish time.`);
+
+console.log("\nOptions:");
+console.log("  --start <ISO_DATE>       First publish time (e.g. 2026-07-25T14:00:00Z)");
+console.log("  --interval <DURATION>    Interval between videos (e.g. 30m, 1h, 2d)");
+console.log("  --title <TITLE>          Default title (use {n} for number, {name} for filename)");
+console.log("  --description <TEXT>     Default description (use {n} for number, {name} for filename)");

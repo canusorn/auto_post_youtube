@@ -20,8 +20,11 @@ npm install
 # สร้าง schedule.csv พร้อมรายชื่อไฟล์ (แก้ไขกำหนดการเองทีละไฟล์ได้)
 npm run generate
 
-# หรือกำหนดเวลาเริ่มต้น + ระยะห่างระหว่างแต่ละไฟล์
+# กำหนดเวลาเริ่มต้น + ระยะห่าง
 npm run generate -- --start 2026-07-25T14:00:00Z --interval 1h
+
+# ใส่ title และ description ตั้งต้น (ใช้ {n} = หมายเลข, {name} = ชื่อไฟล์)
+npm run generate -- --title "Video #{n}" --description "Check out {name}" --start 2026-07-25T14:00:00Z --interval 1d
 ```
 
 เปิด `schedule.csv` ที่สร้างขึ้นมาเพื่อแก้ไข:
