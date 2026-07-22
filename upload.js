@@ -1,12 +1,11 @@
 import { chromium } from "playwright";
 import "dotenv/config";
-import { readFileSync, existsSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 import path from "path";
 
 const {
   YT_EMAIL,
   YT_PASSWORD,
-  VIDEO_PATH,
   VIDEO_TITLE,
   VIDEO_DESCRIPTION,
   VIDEO_TAGS,
@@ -18,12 +17,24 @@ if (!YT_EMAIL || !YT_PASSWORD) {
   process.exit(1);
 }
 
-if (!VIDEO_PATH || !existsSync(VIDEO_PATH)) {
-  console.error("VIDEO_PATH not found:", VIDEO_PATH);
+const UPLOAD_DIR = path.resolve("upload");
+if (!existsSync(UPLOAD_DIR)) {
+  console.error("upload folder not found");
   process.exit(1);
 }
 
-const videoPath = path.resolve(VIDEO_PATH);
+const videoExts = new Set([".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv"]);
+const videos = readdirSync(UPLOAD_DIR).filter((f) =>
+  videoExts.has(path.extname(f).toLowerCase())
+);
+
+if (videos.length === 0) {
+  console.log("No video files found in upload/ folder");
+  process.exit(0);
+}
+
+console.log(`Found ${videos.length} video(s) to upload:\n${videos.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}`);
+
 const title = VIDEO_TITLE || "Untitled Video";
 const description = VIDEO_DESCRIPTION || "";
 const tags = VIDEO_TAGS ? VIDEO_TAGS.split(",").map((t) => t.trim()) : [];
@@ -34,17 +45,17 @@ if (publishAt && isNaN(publishAt.getTime())) {
   process.exit(1);
 }
 
-async function uploadToYouTube() {
-  const { firefox } = await import("playwright");
-
-  const browser = await firefox.launch({ headless: false });
+async function uploadVideo(browser, videoFile) {
   const context = await browser.newContext({
     locale: "en-US",
     timezoneId: "America/New_York",
   });
   const page = await context.newPage();
+  const videoPath = path.join(UPLOAD_DIR, videoFile);
 
   try {
+    console.log(`\n--- Uploading: ${videoFile} ---`);
+
     // 1. Sign in
     console.log("Signing in to Google...");
     await page.goto("https://accounts.google.com/signin", { waitUntil: "networkidle" });
@@ -77,10 +88,14 @@ async function uploadToYouTube() {
     await page.waitForSelector("ytcp-video-title-form", { timeout: 120000 });
     console.log("Upload completed, filling metadata...");
 
-    // 7. Fill title
+    // 7. Fill title — use video filename without extension if default title
+    const videoTitle = title === "Untitled Video"
+      ? path.parse(videoFile).name
+      : title;
+
     const titleInput = page.locator("#title-textarea");
     await titleInput.click();
-    await titleInput.fill(title);
+    await titleInput.fill(videoTitle);
 
     // 8. Fill description
     const descInput = page.locator("#description-textarea");
@@ -101,16 +116,13 @@ async function uploadToYouTube() {
 
     // 10. Set visibility
     await page.waitForTimeout(2000);
-    const visibilitySection = page.locator("ytkc-made-for-kids-select");
     await page.waitForSelector("ytcp-visibility-select", { timeout: 15000 });
 
     if (PUBLISH_AT) {
-      // Schedule
       const scheduleRadio = page.locator("tp-yt-paper-radio-button[name='SCHEDULE']");
       await scheduleRadio.click();
       await page.waitForTimeout(1000);
 
-      // Set date/time
       const dateInput = page.locator("#schedule-date");
       await dateInput.click();
       const d = new Date(PUBLISH_AT);
@@ -125,12 +137,11 @@ async function uploadToYouTube() {
       await timeInput.press("Tab");
       console.log(`Scheduled for: ${PUBLISH_AT}`);
     } else {
-      // Public immediately
       const publicRadio = page.locator("tp-yt-paper-radio-button[name='PUBLIC']");
       await publicRadio.click();
     }
 
-    // 11. Handle "Made for Kids" — select "No"
+    // 11. Handle "Made for Kids"
     await page.waitForTimeout(1000);
     const notForKids = page.locator("tp-yt-paper-radio-button[name='NOT_MADE_FOR_KIDS']");
     if (await notForKids.isVisible()) {
@@ -146,7 +157,7 @@ async function uploadToYouTube() {
       }
     }
 
-    // 13. Set visibility and confirm
+    // 13. Set visibility again on final panel
     await page.waitForTimeout(2000);
     if (PUBLISH_AT) {
       const scheduleRadio = page.locator("tp-yt-paper-radio-button[name='SCHEDULE']");
@@ -158,19 +169,29 @@ async function uploadToYouTube() {
       await page.waitForTimeout(1000);
     }
 
-    // 14. Click DONE / PUBLISH
+    // 14. Click DONE
     const doneBtn = page.locator("ytcp-button:has-text('Done')");
     await doneBtn.click();
 
     await page.waitForTimeout(5000);
-    console.log("Video uploaded successfully!");
+    console.log(`✓ Uploaded: ${videoFile}`);
   } catch (err) {
-    console.error("Upload failed:", err);
-    await page.screenshot({ path: "error.png" });
-    process.exit(1);
+    console.error(`✗ Failed: ${videoFile}`, err.message);
+    await page.screenshot({ path: `error-${videoFile}.png` });
   } finally {
-    await browser.close();
+    await context.close();
   }
 }
 
-uploadToYouTube();
+async function main() {
+  const browser = await chromium.launch({ headless: false });
+
+  for (const video of videos) {
+    await uploadVideo(browser, video);
+  }
+
+  await browser.close();
+  console.log("\nAll uploads complete!");
+}
+
+main();
