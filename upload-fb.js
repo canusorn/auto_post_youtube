@@ -237,15 +237,13 @@ async function uploadReel(context, entry) {
       await page.screenshot({ path: `fb-pub-timeout-${entry.filename}.png` });
       await new Promise((resolve) => process.stdin.once("data", resolve));
     }
-    await page.waitForTimeout(60000);
+    try { await page.waitForTimeout(60000); } catch {}
     console.log(`✓ Reel uploaded: ${entry.filename}`);
   } catch (err) {
     console.error(`✗ Failed: ${entry.filename} — ${err.message}`);
-    console.log("  Browser will close in 10 seconds...");
-    await page.screenshot({ path: `fb-error-${entry.filename}.png` });
-    await page.waitForTimeout(10000);
+    try { await page.screenshot({ path: `fb-error-${entry.filename}.png` }); } catch {}
   } finally {
-    await page.close();
+    try { await page.close(); } catch {}
   }
 }
 
@@ -289,7 +287,15 @@ async function main() {
   console.log(`Opening ${engine} for Facebook Reels upload...`);
   await ensureLoggedIn(firstPage);
   await firstPage.close();
-  for (const entry of entries) { await uploadReel(context, entry); }
+  for (let i = 0; i < entries.length; i++) {
+    await uploadReel(context, entries[i]);
+    if (i < entries.length - 1) {
+      console.log("  Waiting 30s before next upload...");
+      await new Promise(r => setTimeout(r, 30000));
+    }
+  }
+  console.log("  Waiting 30s before closing...");
+  await new Promise(r => setTimeout(r, 30000));
   await context.close();
   console.log("\nAll reels uploaded!");
 }
