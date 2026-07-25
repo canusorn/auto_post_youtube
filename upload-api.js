@@ -1,8 +1,7 @@
 import { google } from "googleapis";
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, createReadStream } from "fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync, createReadStream } from "fs";
 import path from "path";
 import { createInterface } from "readline";
-import { fileURLToPath } from "url";
 
 const SCOPES = ["https://www.googleapis.com/auth/youtube.upload"];
 const TOKEN_PATH = "token.json";
@@ -69,17 +68,23 @@ async function getNewToken(oAuth2Client) {
   });
 
   console.log("\n=====================");
-  console.log("เปิดลิงก์นี้ใน Chrome เพื่อให้สิทธิ์:");
-  console.log(authUrl);
+  console.log("1. เปิดลิงก์นี้ใน Chrome (กด Ctrl+คลิก):");
+  console.log("   " + authUrl);
   console.log("=====================\n");
-  console.log("หลังจากให้สิทธิ์แล้ว จะได้รหัส authorization code");
-  console.log("ให้คัดลอกมา paste ที่นี่:\n");
+  console.log("2. ให้สิทธิ์แอป (เลือกบัญชี YouTube → Advanced → Go to clipflowth)");
+  console.log("3. Browser จะ redirect ไป localhost/?code=XXXXX");
+  console.log("   ให้ COPY เฉพาะ CODE (จากหลัง code= ถึงก่อน &scope)");
+  console.log("   ตัวอย่าง: ถ้า URL เป็น");
+
+  console.log("   http://localhost/?code=4/0AX...AQ&scope=...");
+  console.log("   ให้คัดลอก: 4/0AX...AQ");
+  console.log("");
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const code = await new Promise((resolve) => rl.question("Enter code: ", resolve));
+  const code = await new Promise((resolve) => rl.question("Paste code ที่นี่: ", resolve));
   rl.close();
 
-  const { tokens } = await oAuth2Client.getToken(code);
+  const { tokens } = await oAuth2Client.getToken(code.trim());
   oAuth2Client.setCredentials(tokens);
   writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
   console.log("Token saved to", TOKEN_PATH);
