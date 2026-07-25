@@ -197,30 +197,47 @@ async function uploadReel(context, entry) {
       const dt = new Date(pub);
       if (!isNaN(dt.getTime())) {
         console.log("  Setting schedule...");
-        // Click schedule options button ("ตัวเลือกการกำหนดเวลาเผยแพร่")
-        const schedBtn = page.locator("text=ตัวเลือกการกำหนดเวลาเผยแพร่, text=กำหนดเวลาเผยแพร่").first();
-        if (await schedBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        // Find all clickable scheduling elements on the page
+        const allText = await page.evaluate(() => {
+          const els = document.querySelectorAll("[role='button'], button, [aria-label]");
+          const texts = [];
+          for (const el of els) {
+            const t = (el.textContent || "").trim();
+            if (t.includes("วลา") || t.includes("าร") || t.includes("โพส") || t.includes("จัย")) {
+              texts.push({ tag: el.tagName, text: t.slice(0, 60), aria: el.getAttribute("aria-label") || "" });
+            }
+          }
+          return texts;
+        });
+        console.log("  Scheduling-related elements:");
+        for (const x of allText) console.log(`    <${x.tag}> aria="${x.aria}" text="${x.text}"`);
+
+        // Try clicking schedule options then look for date inputs
+        const schedBtn = page.locator(":has-text('ตัวเลือกการกำหนดเวลา'), :has-text('กำหนดเวลาเผยแพร่'), :has-text('Schedule')").first();
+        if (await schedBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          console.log("  Clicking schedule options button...");
           await schedBtn.click();
           await page.waitForTimeout(1500);
         }
-        // If a popup appeared, look for "ตั้งเวลา" option
-        const scheduleOpt = page.locator("text=ตั้งเวลาเผยแพร่, text=ตั้งเวลา").first();
+        const scheduleOpt = page.locator(":has-text('ตั้งเวลา'), :has-text('Schedule post')").first();
         if (await scheduleOpt.isVisible({ timeout: 3000 }).catch(() => false)) {
+          console.log("  Selecting schedule option...");
           await scheduleOpt.click();
           await page.waitForTimeout(1000);
         }
-        // Fill date/time inputs
         const dateStr = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
         const timeStr = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
-        const dateInput = page.locator("input[type='date'], [aria-label='วันที่'], input[placeholder*='วว']").first();
-        if (await dateInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-          await dateInput.fill(dateStr);
+        const dateInput = page.locator("input[type='date']").first();
+        if (await dateInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await dateInput.fill(dateStr); console.log("  Date set.");
         }
-        const timeInput = page.locator("input[type='time'], [aria-label='เวลา'], input[placeholder*='ชม']").first();
-        if (await timeInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-          await timeInput.fill(timeStr);
+        const timeInput = page.locator("input[type='time']").first();
+        if (await timeInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await timeInput.fill(timeStr); console.log("  Time set.");
         }
-        console.log("  Schedule set.");
+        if (!await dateInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+          console.log("  Date input not found. Scheduling may have failed.");
+        }
       }
     }
 
