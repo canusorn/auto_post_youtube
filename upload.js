@@ -10,8 +10,8 @@ const {
   PUBLISH_AT: ENV_PUBLISH_AT,
 } = process.env;
 
-if (!YT_EMAIL || !YT_PASSWORD) {
-  console.error("Missing YT_EMAIL or YT_PASSWORD in .env");
+if (!YT_EMAIL) {
+  console.error("Missing YT_EMAIL in .env");
   process.exit(1);
 }
 
@@ -140,14 +140,27 @@ async function uploadVideo(browser, entry) {
     console.log(`\n--- Uploading: ${entry.file} ---`);
 
     // 1. Sign in
-    console.log("Signing in to Google...");
+    console.log("Opening Google sign-in...");
     await page.goto("https://accounts.google.com/signin", { waitUntil: "networkidle" });
-    await page.fill('input[type="email"]', YT_EMAIL);
-    await page.click("#identifierNext");
-    await page.waitForTimeout(2000);
-    await page.fill('input[type="password"]', YT_PASSWORD);
-    await page.click("#passwordNext");
-    await page.waitForURL(/myaccount|youtube/, { timeout: 30000 });
+
+    if (YT_PASSWORD) {
+      // Auto-fill credentials
+      console.log("Auto-filling email...");
+      await page.fill('input[type="email"]', YT_EMAIL);
+      await page.click("#identifierNext");
+      await page.waitForTimeout(2000);
+      console.log("Auto-filling password...");
+      await page.fill('input[type="password"]', YT_PASSWORD);
+      await page.click("#passwordNext");
+      await page.waitForURL(/myaccount|youtube/, { timeout: 30000 });
+    } else {
+      // Manual login
+      console.log(`Fill email: ${YT_EMAIL}, then enter password + 2FA manually`);
+      await page.fill('input[type="email"]', YT_EMAIL);
+      await page.click("#identifierNext");
+      console.log("Waiting for you to complete login manually...");
+      await page.waitForURL(/myaccount|youtube/, { timeout: 120000 });
+    }
     console.log("Signed in successfully.");
 
     // 2. Navigate to YouTube Studio

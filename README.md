@@ -41,6 +41,7 @@ npm run generate -- --title "Video #{n}" --description "Check out {name}" --star
 
 ```env
 YT_EMAIL=your-google-email@gmail.com
+# เว้นว่างไว้เพื่อล็อกอินเอง (กรณีมี 2FA)
 YT_PASSWORD=your-google-password
 VIDEO_TAGS=tag1,tag2,tag3
 ```
@@ -55,6 +56,6 @@ npm run upload
 
 ## หมายเหตุ
 
-- ครั้งแรกต้องเข้าสู่ระบบด้วยตัวเอง (2FA, ยืนยันเบอร์โทร ฯลฯ)
+- ถ้าไม่ใส่ `YT_PASSWORD` ใน `.env` บราวเซอร์จะเปิดมาให้ล็อกอินเอง — เหมาะกับบัญชีที่มี 2FA
 - YouTube Studio อาจเปลี่ยน UI ทำให้ selector ใช้ไม่ได้ — ตรวจสอบ `upload.js` ถ้าเกิดข้อผิดพลาด
 - ควรให้ `headless: false` เพื่อดูขั้นตอนการทำงาน
