@@ -24,6 +24,7 @@ if (videos.length === 0) {
 // ── Parse CLI args ───────────────────────────────────────────
 
 const args = process.argv.slice(2);
+console.error("DEBUG args:", JSON.stringify(args));
 let startTime = null;
 let intervalMs = null;
 let defaultTitle = "";
@@ -154,8 +155,12 @@ for (let i = 0; i < videos.length; i++) {
   let pub = prev.publish_at;
 
   if (startTime && intervalMs && (args.includes("--force") || !existing[v]?.publish_at?.trim())) {
+    const oldPub = pub;
     pub = nextTime ? nextTime.toISOString() : "";
     nextTime = new Date(nextTime.getTime() + intervalMs);
+    if (args.includes("--force") && oldPub && oldPub !== pub) {
+      console.log(`  Force override: ${v} — ${oldPub} → ${pub}`);
+    }
   }
 
   const rowTitle = prev.title || defaultTitle.replace(/\{n\}/g, String(i + 1)).replace(/\{name\}/g, path.parse(v).name);
