@@ -94,16 +94,30 @@ entries.forEach((e, i) => {
 // ── Upload each reel ─────────────────────────────────────────
 
 async function ensureLoggedIn(page) {
-  await page.goto("https://www.facebook.com", { waitUntil: "networkidle", timeout: 30000 });
-  await page.waitForTimeout(3000);
-  if (page.url().includes("login")) {
+  await page.goto("https://www.facebook.com", { waitUntil: "domcontentloaded", timeout: 30000 });
+  await page.waitForTimeout(2000);
+
+  if (page.url().includes("login") || page.url().includes("checkpoint")) {
     console.log("\n==============================================");
     const browserName = useFirefox ? "Firefox" : "Chrome";
-    console.log(`  กรุณาล็อกอิน Facebook ใน ${browserName} ที่เปิดอยู่`);
+    console.log(`  กรุณาล็อกอิน Facebook ในหน้าต่าง ${browserName} ที่เปิดอยู่`);
     console.log("  แล้วกลับมาที่ Terminal แล้วกด Enter");
+    console.log("  (ถ้าหน้าเว็บรีเฟรชไม่หยุด ให้ลบ chrome-profile/ แล้วรันใหม่)");
     console.log("==============================================\n");
     await new Promise((resolve) => process.stdin.once("data", resolve));
-    await page.goto("https://www.facebook.com", { waitUntil: "networkidle", timeout: 60000 });
+
+    // Wait for login to complete (URL no longer contains login)
+    for (let i = 0; i < 30; i++) {
+      await page.waitForTimeout(2000);
+      const url = page.url();
+      if (!url.includes("login") && !url.includes("checkpoint") && !url.includes("captcha")) {
+        console.log("  Login detected!");
+        break;
+      }
+      if (i === 15) {
+        console.log("  กำลังรอให้ล็อกอินสำเร็จ... (รออีก 30 วินาที)");
+      }
+    }
   }
 }
 
@@ -117,41 +131,36 @@ async function uploadReel(context, entry) {
   try {
     console.log(`\n--- Uploading reel: ${entry.filename} ---`);
 
-    // Go to Creator Studio
-    await page.goto("https://business.facebook.com/creatorstudio/", { waitUntil: "networkidle", timeout: 30000 });
+    // Check if logged in first
+    await page.goto("https://www.facebook.com", { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForTimeout(2000);
+    if (page.url().includes("login")) {
+      console.log("  Not logged in! Please login first.");
+      return;
+    }
+
+    // Try Reels creation page directly
+    await page.goto("https://www.facebook.com/reels/create/", { waitUntil: "domcontentloaded", timeout: 30000 });
     await page.waitForTimeout(3000);
 
-    // Click "Create Reel" or similar
-    const createBtn = page.locator("span:has-text('Create reel'), span:has-text('Create Reel'), [aria-label='Create reel'], [aria-label='Create Reel']");
-    if (await createBtn.first().isVisible({ timeout: 10000 }).catch(() => false)) {
-      await createBtn.first().click();
-    } else {
-      // Try the reels tab directly
-      await page.goto("https://www.facebook.com/reels/", { waitUntil: "networkidle" });
+    // If redirected away (not on create page), try alternative URLs
+    if (!page.url().includes("reels")) {
+      console.log("  Reels create page not found, trying alternative...");
+      await page.goto("https://www.facebook.com/reels/?create=1", { waitUntil: "domcontentloaded", timeout: 30000 });
       await page.waitForTimeout(3000);
-      const uploadBtn = page.locator("[aria-label='Create reel'], [aria-label='Upload reel'], span:has-text('Upload')");
-      if (await uploadBtn.first().isVisible({ timeout: 5000 }).catch(() => false)) {
-        await uploadBtn.first().click();
-      } else {
-        console.log("  No Create Reel button found. Trying direct upload...");
-      }
     }
 
     await page.waitForTimeout(2000);
 
-    // Upload file — try multiple approaches
+    // Upload file
     const fileInput = page.locator("input[type='file']").first();
-    if (await fileInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await fileInput.setInputFiles(videoPath);
-    } else {
-      // Facebook may use a hidden file input triggered by a button
-      await page.evaluate(() => {
-        const inp = document.querySelector("input[type='file']");
-        if (inp) inp.style.display = "block";
-      });
-      await page.waitForTimeout(500);
-      await fileInput.setInputFiles(videoPath);
+    // Click the upload area first to make sure file input is active
+    const uploadArea = page.locator("[aria-label*='video'], [aria-label*='Upload'], [aria-label*='Select'], div:has-text('Click to upload'), div:has-text('Drag and drop')").first();
+    if (await uploadArea.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await uploadArea.click();
+      await page.waitForTimeout(1000);
     }
+    await fileInput.setInputFiles(videoPath);
     console.log("  File selected, waiting for upload...");
     await page.waitForTimeout(5000);
     console.log("  Upload in progress. Facebook may take time to process.");
