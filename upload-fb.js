@@ -193,15 +193,30 @@ async function uploadReel(context, entry) {
 
     // Now on publish page — add caption
     if (entry.description) {
-      const captionSel = "[aria-label='คลิป Reels'] div[contenteditable='true'], [contenteditable='true']";
+      const captionSel = "[aria-label='คลิป Reels'] [contenteditable='true']";
       const descInput = page.locator(captionSel).first();
       if (await descInput.isVisible({ timeout: 10000 }).catch(() => false)) {
+        const tag = await descInput.evaluate(el => el.tagName + " role=" + el.getAttribute("role"));
+        console.log(`  Caption element: ${tag}`);
         await descInput.click();
         await page.waitForTimeout(500);
-        await descInput.evaluate((el, text) => { el.innerText = text; }, entry.description);
-        console.log("  Caption filled.");
+        await descInput.fill(entry.description);
+        console.log("  Caption filled (via fill).");
+        // Verify
+        const text = await descInput.evaluate(el => el.innerText);
+        console.log(`  Caption text: "${text.slice(0, 50)}..."`);
       } else {
-        console.log("  Caption input not found.");
+        console.log("  Caption input not found within form, trying fallback...");
+        const fallback = page.locator("[contenteditable='true'], [role='textbox']").first();
+        if (await fallback.isVisible({ timeout: 5000 }).catch(() => false)) {
+          await fallback.click();
+          await page.waitForTimeout(500);
+          await fallback.fill(entry.description);
+          console.log("  Caption filled (fallback).");
+        } else {
+          console.log("  Caption input not found at all.");
+          await page.screenshot({ path: `fb-no-caption-${entry.filename}.png` });
+        }
       }
     }
 
