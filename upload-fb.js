@@ -6,7 +6,7 @@ import path from "path";
 
 const JSON_FILE = "schedule.json";
 const CSV_FILE = "schedule.csv";
-const useFirefox = process.argv.includes("--firefox");
+const useFirefox = process.argv.slice(2).includes("--firefox");
 const PROFILE_DIR = path.resolve(useFirefox ? "firefox-profile" : "chrome-profile");
 if (!existsSync(PROFILE_DIR)) mkdirSync(PROFILE_DIR, { recursive: true });
 

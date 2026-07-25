@@ -6,8 +6,8 @@
 
 | คำสั่ง | คำอธิบาย |
 |---|---|
-| `npm run generate` | สร้าง schedule.csv สำหรับกำหนดการอัปโหลด |
-| `npm run generate -- --json` | สร้าง schedule.json (description หลายบรรทัดได้) |
+| `node generate.js` | สร้าง schedule.csv สำหรับกำหนดการอัปโหลด |
+| `node generate.js --json` | สร้าง schedule.json (description หลายบรรทัดได้) |
 | `npm run upload-api` | อัปโหลดไป YouTube ผ่าน API (แนะนำ) |
 | `npm run upload` | อัปโหลดไป YouTube ผ่าน Playwright (browser) |
 | `npm run upload-fb` | อัปโหลด Reels ไป Facebook ผ่าน Playwright |
@@ -22,7 +22,7 @@
 ## 2. สร้างตารางกำหนดการ
 
 ```bash
-npm run generate -- --start 2026-07-26T12:00:00Z --interval 24h --json
+node generate.js --start 2026-07-24T12:00:00Z --interval 24h --json
 ```
 
 เปิด `schedule.json` (หรือ `schedule.csv`) เพื่อแก้ไข:
@@ -37,6 +37,22 @@ npm run generate -- --start 2026-07-26T12:00:00Z --interval 24h --json
 | `publish_at` | ISO 8601 เวลาเผยแพร่ ถ้าว่าง = โพสต์ทันที |
 
 รูปแบบ interval: `30m`, `1h`, `2d`, `24h`
+
+**หมายเหตุ:** ให้ใช้ `node generate.js` แทน `npm run generate --` เพราะ `--` ใช้ไม่ได้ใน PowerShell
+
+```bash
+# สร้าง schedule.csv พร้อมตั้งเวลา (เริ่มวันที่ 24 ก.ค. ห่างกัน 24h)
+node generate.js --start 2026-07-24T12:00:00Z --interval 24h
+
+# เขียนทับ publish_at ที่มีอยู่แล้ว
+node generate.js --start 2026-07-24T12:00:00Z --interval 24h --force
+
+# สร้างแบบ JSON
+node generate.js --start 2026-07-24T12:00:00Z --interval 24h --json
+
+# กรอก title/description อัตโนมัติ ({n}=ลำดับ, {name}=ชื่อไฟล์)
+node generate.js --title "คลิปที่ {n}" --description "วิดีโอ {name} ดูเพลิน"
+```
 
 ---
 
@@ -56,8 +72,8 @@ npm run upload-api
 
 ```bash
 npm run upload
-# หรือใช้ Firefox
-npm run upload -- --firefox
+# หรือใช้ Firefox (ใช้ node โดยตรง เพราะ `--` ใช้ไม่ได้ใน PowerShell)
+node upload.js --firefox
 ```
 
 - ใช้ browser automation (Google อาจ detect)
@@ -68,8 +84,8 @@ npm run upload -- --firefox
 
 ```bash
 npm run upload-fb
-# หรือใช้ Firefox
-npm run upload-fb -- --firefox
+# หรือใช้ Firefox (ใช้ node โดยตรง เพราะ `--` ใช้ไม่ได้ใน PowerShell)
+node upload-fb.js --firefox
 ```
 
 - ใช้ browser automation
