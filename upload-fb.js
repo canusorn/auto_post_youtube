@@ -191,40 +191,36 @@ async function uploadReel(context, entry) {
 
     await page.waitForTimeout(2000);
 
-    // Handle scheduling if publish_at provided
+    // Set schedule if publish_at provided
     const pub = entry.publish_at;
     if (pub) {
       const dt = new Date(pub);
       if (!isNaN(dt.getTime())) {
-        const clicked = await findAndClick(page, [
-          "[aria-label*='แชร์กับ']",
-          "[aria-label='แชร์กับ สาธารณะ']",
-          "span:has-text('สาธารณะ')",
-        ], "visibility dropdown");
-        if (clicked) {
+        console.log("  Setting schedule...");
+        // Click schedule options button ("ตัวเลือกการกำหนดเวลาเผยแพร่")
+        const schedBtn = page.locator("text=ตัวเลือกการกำหนดเวลาเผยแพร่, text=กำหนดเวลาเผยแพร่").first();
+        if (await schedBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await schedBtn.click();
           await page.waitForTimeout(1500);
-          const schedClicked = await findAndClick(page, [
-            "span:has-text('ตั้งเวลาเผยแพร่')",
-            "span:has-text('ตั้งเวลา')",
-            "span:has-text('Schedule')",
-            "div[role='menuitem']:has-text('ตั้งเวลา')",
-            "div[role='menuitem']:has-text('กำหนดเวลา')",
-          ], "schedule option");
-          if (schedClicked) {
-            await page.waitForTimeout(1000);
-            const dateStr = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
-            const timeStr = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
-            const dateInput = page.locator("input[type='date'], [aria-label='วันที่'], input[placeholder*='วว']").first();
-            if (await dateInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-              await dateInput.fill(dateStr);
-            }
-            const timeInput = page.locator("input[type='time'], [aria-label='เวลา'], input[placeholder*='ชม']").first();
-            if (await timeInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-              await timeInput.fill(timeStr);
-            }
-            console.log("  Schedule set.");
-          }
         }
+        // If a popup appeared, look for "ตั้งเวลา" option
+        const scheduleOpt = page.locator("text=ตั้งเวลาเผยแพร่, text=ตั้งเวลา").first();
+        if (await scheduleOpt.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await scheduleOpt.click();
+          await page.waitForTimeout(1000);
+        }
+        // Fill date/time inputs
+        const dateStr = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+        const timeStr = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+        const dateInput = page.locator("input[type='date'], [aria-label='วันที่'], input[placeholder*='วว']").first();
+        if (await dateInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+          await dateInput.fill(dateStr);
+        }
+        const timeInput = page.locator("input[type='time'], [aria-label='เวลา'], input[placeholder*='ชม']").first();
+        if (await timeInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+          await timeInput.fill(timeStr);
+        }
+        console.log("  Schedule set.");
       }
     }
 
