@@ -72,6 +72,7 @@ function readSchedule() {
     title: headers.indexOf("title"),
     description: headers.indexOf("description"),
     tags: headers.indexOf("tags"),
+    shorts: headers.indexOf("shorts"),
     publish_at: headers.indexOf("publish_at"),
   };
   if (idx.filename === -1) return null;
@@ -86,6 +87,7 @@ function readSchedule() {
       title: idx.title !== -1 ? cols[idx.title]?.trim() || "" : "",
       description: idx.description !== -1 ? (cols[idx.description]?.trim() || "").replace(/\\n/g, "\n") : "",
       tags: idx.tags !== -1 ? cols[idx.tags]?.trim() || "" : "",
+      shorts: idx.shorts !== -1 ? cols[idx.shorts]?.trim() || "" : "",
       publish_at: idx.publish_at !== -1 ? cols[idx.publish_at]?.trim() || "" : "",
     });
   }
@@ -109,6 +111,7 @@ if (scheduleEntries) {
       title: e.title,
       description: e.description,
       tags: e.tags,
+      shorts: e.shorts || "",
       publish_at: e.publish_at,
     }));
 
@@ -125,6 +128,7 @@ if (scheduleEntries) {
     title: "",
     description: "",
     tags: "",
+    shorts: "",
     publish_at: ENV_PUBLISH_AT || "",
   }));
 }
@@ -215,10 +219,13 @@ async function uploadVideo(context, entry) {
     await titleInput.fill(videoTitle);
 
     // Fill description
-    if (entry.description) {
+    let descText = entry.description || "";
+    const isShorts = ["true", "yes", "1"].includes(String(entry.shorts || "").toLowerCase().trim());
+    if (isShorts) descText = (descText + "\n#Shorts").trim();
+    if (descText) {
       const descInput = page.locator("#description-textarea");
       await descInput.click();
-      await descInput.fill(entry.description);
+      await descInput.fill(descText);
     }
 
     // Add tags

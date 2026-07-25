@@ -112,6 +112,7 @@ function loadExisting() {
     title: headers.indexOf("title"),
     description: headers.indexOf("description"),
     tags: headers.indexOf("tags"),
+    shorts: headers.indexOf("shorts"),
     publish_at: headers.indexOf("publish_at"),
   };
   if (idx.filename === -1) return {};
@@ -125,6 +126,7 @@ function loadExisting() {
         title: idx.title !== -1 ? cols[idx.title]?.trim() || "" : "",
         description: idx.description !== -1 ? cols[idx.description]?.trim() || "" : "",
         tags: idx.tags !== -1 ? cols[idx.tags]?.trim() || "" : "",
+        shorts: idx.shorts !== -1 ? cols[idx.shorts]?.trim() || "" : "",
         publish_at: idx.publish_at !== -1 ? cols[idx.publish_at]?.trim() || "" : "",
       };
     }
@@ -148,7 +150,7 @@ let nextTime = startTime ? new Date(startTime.getTime()) : null;
 
 for (let i = 0; i < videos.length; i++) {
   const v = videos[i];
-  const prev = existing[v] || { title: "", description: "", tags: "", publish_at: "" };
+  const prev = existing[v] || { title: "", description: "", tags: "", shorts: "", publish_at: "" };
   let pub = prev.publish_at;
 
   if (startTime && intervalMs && !existing[v]?.publish_at?.trim()) {
@@ -159,7 +161,7 @@ for (let i = 0; i < videos.length; i++) {
   const rowTitle = prev.title || defaultTitle.replace(/\{n\}/g, String(i + 1)).replace(/\{name\}/g, path.parse(v).name);
   const rowDesc = prev.description || defaultDescription.replace(/\{n\}/g, String(i + 1)).replace(/\{name\}/g, path.parse(v).name);
 
-  entries.push({ filename: v, title: rowTitle, description: rowDesc, tags: prev.tags || "", publish_at: pub });
+  entries.push({ filename: v, title: rowTitle, description: rowDesc, tags: prev.tags || "", shorts: prev.shorts || "", publish_at: pub });
 }
 
 // ── Write output ─────────────────────────────────────────────
@@ -170,9 +172,9 @@ if (useJson) {
   console.log(`Generated ${JSON_FILE} with ${entries.length} file(s)`);
   console.log("ใช้ editor ใดก็ได้แก้ไข — description รองรับหลายบรรทัด");
 } else {
-  const csvRows = [["filename", "title", "description", "tags", "publish_at"]];
+  const csvRows = [["filename", "title", "description", "tags", "shorts", "publish_at"]];
   for (const e of entries) {
-    csvRows.push([e.filename, e.title, e.description, e.tags, e.publish_at]);
+    csvRows.push([e.filename, e.title, e.description, e.tags, e.shorts, e.publish_at]);
   }
   const csvContent = csvRows.map((r) => r.map(esc).join(",")).join("\n");
   writeFileSync(CSV_FILE, csvContent, "utf-8");
@@ -184,7 +186,8 @@ console.log("");
 entries.forEach((e, i) => {
   const marker = e.publish_at ? ` @ ${e.publish_at}` : " (immediate)";
   const label = e.title ? `${e.title} (${e.filename})` : e.filename;
-  console.log(`  ${i + 1}. ${label}${marker}`);
+  const shorts = ["true", "yes", "1"].includes(String(e.shorts || "").toLowerCase().trim()) ? " [Short]" : "";
+  console.log(`  ${i + 1}. ${label}${shorts}${marker}`);
 });
 
 if (startTime && intervalMs && entries.length > 1) {

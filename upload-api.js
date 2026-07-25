@@ -138,6 +138,7 @@ function readSchedule() {
     title: headers.indexOf("title"),
     description: headers.indexOf("description"),
     tags: headers.indexOf("tags"),
+    shorts: headers.indexOf("shorts"),
     publish_at: headers.indexOf("publish_at"),
   };
   if (idx.filename === -1) return null;
@@ -152,6 +153,7 @@ function readSchedule() {
       title: idx.title !== -1 ? cols[idx.title]?.trim() || "" : "",
       description: idx.description !== -1 ? (cols[idx.description]?.trim() || "").replace(/\\n/g, "\n") : "",
       tags: idx.tags !== -1 ? cols[idx.tags]?.trim() || "" : "",
+      shorts: idx.shorts !== -1 ? cols[idx.shorts]?.trim() || "" : "",
       publish_at: idx.publish_at !== -1 ? cols[idx.publish_at]?.trim() || "" : "",
     });
   }
@@ -196,21 +198,27 @@ async function uploadVideo(auth, entry) {
     ? entry.tags.split(",").map((t) => t.trim()).filter(Boolean)
     : [];
 
-  const snippet = { title, description: entry.description || "", tags };
+  let description = entry.description || "";
+  const isShorts = ["true", "yes", "1"].includes(String(entry.shorts || "").toLowerCase().trim());
+  if (isShorts) {
+    description = (description + "\n#Shorts").trim();
+  }
+
+  const snippet = { title, description, tags };
   const status = { privacyStatus: "public" };
 
-  // Set publishAt for scheduling
   if (entry.publish_at) {
     const d = new Date(entry.publish_at);
     if (!isNaN(d.getTime())) {
       status.publishAt = d.toISOString();
-      status.privacyStatus = "private"; // must be private when scheduling
+      status.privacyStatus = "private";
     }
   }
 
   console.log(`\nUploading: ${entry.filename}`);
   console.log(`  Title: ${title}`);
   console.log(`  Size: ${(fileSize / 1024 / 1024).toFixed(1)} MB`);
+  if (isShorts) console.log(`  Type: Shorts`);
   if (status.publishAt) console.log(`  Schedule: ${status.publishAt}`);
 
   const youtube = google.youtube({ version: "v3", auth });
