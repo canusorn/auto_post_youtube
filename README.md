@@ -84,14 +84,15 @@ node upload.js --firefox
 
 ```bash
 npm run upload-fb
-# หรือใช้ Firefox (ใช้ node โดยตรง เพราะ `--` ใช้ไม่ได้ใน PowerShell)
+# หรือใช้ Firefox
 node upload-fb.js --firefox
 ```
 
-- ใช้ browser automation
-- ครั้งแรก: ล็อกอิน Facebook เอง แล้วกด Enter
-- session ถูกบันทึกไว้
-- Facebook Reels รองรับการตั้งเวลาผ่านเว็บ (ใช้ publish_at ใน schedule)
+- สคริปต์: เปิด Chrome → ล็อกอิน → อัปโหลดวิดีโอ → กรอก caption
+- **จากนั้นรอให้กด Publish/Schedule เอง** — เพราะ Facebook เปลี่ยน UI ตลอด
+- เสร็จแล้วกลับมา Terminal กด Enter
+- session ถูกบันทึกไว้ ไม่ต้องล็อกอินซ้ำ
+- Facebook Reels รองรับการตั้งเวลาผ่านเว็บ
 - **ถ้าหน้าเว็บรีเฟรชไม่หยุด**: ให้ลบ `chrome-profile/` หรือ `firefox-profile/` แล้วรันใหม่
 
 ---
