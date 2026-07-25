@@ -1,11 +1,10 @@
-import { chromium } from "playwright";
+import { firefox } from "playwright";
 import "dotenv/config";
-import { existsSync, readdirSync, readFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync, mkdirSync } from "fs";
 import path from "path";
 
 const {
   YT_EMAIL,
-  YT_PASSWORD,
   VIDEO_TAGS,
   PUBLISH_AT: ENV_PUBLISH_AT,
 } = process.env;
@@ -22,6 +21,10 @@ if (!existsSync(UPLOAD_DIR)) {
 }
 
 const CSV_FILE = "schedule.csv";
+const PROFILE_DIR = path.resolve("firefox-profile");
+if (!existsSync(PROFILE_DIR)) {
+  mkdirSync(PROFILE_DIR, { recursive: true });
+}
 
 // ── CSV helpers ──────────────────────────────────────────────
 
@@ -97,7 +100,6 @@ if (scheduleEntries) {
     console.warn(`Warning: "${m.filename}" listed in CSV but not found in upload/ folder`);
   }
 } else {
-  // Fallback: scan folder
   const videos = readdirSync(UPLOAD_DIR).filter((f) =>
     videoExts.has(path.extname(f).toLowerCase())
   ).sort();
@@ -121,13 +123,30 @@ filesToUpload.forEach((f, i) => {
   console.log(`  ${i + 1}. ${f.file}${sched}`);
 });
 
+// ── Wait for manual login ──────────────────────────────────
+
+async function ensureLoggedIn(page) {
+  await page.goto("https://studio.youtube.com", { waitUntil: "networkidle", timeout: 60000 });
+  await page.waitForTimeout(3000);
+
+  // If redirected to accounts.google.com, user is not logged in
+  if (page.url().includes("accounts.google.com")) {
+    console.log("\n==============================================");
+    console.log("  กรุณาล็อกอิน YouTube ใน Firefox ที่เปิดอยู่");
+    console.log("  ล็อกอินด้วยบัญชี: " + YT_EMAIL);
+    console.log("  จากนั้นกลับมาที่ Terminal แล้วกด Enter");
+    console.log("==============================================\n");
+    await new Promise((resolve) => {
+      process.stdin.once("data", resolve);
+    });
+    // After user presses Enter, wait for studio to load
+    await page.waitForURL(/studio\.youtube\.com/, { timeout: 120000 });
+  }
+}
+
 // ── Upload logic ─────────────────────────────────────────────
 
-async function uploadVideo(browser, entry) {
-  const context = await browser.newContext({
-    locale: "en-US",
-    timezoneId: "America/New_York",
-  });
+async function uploadVideo(context, entry) {
   const page = await context.newPage();
   const videoPath = path.join(UPLOAD_DIR, entry.file);
   const tags = entry.tags
@@ -139,65 +158,40 @@ async function uploadVideo(browser, entry) {
   try {
     console.log(`\n--- Uploading: ${entry.file} ---`);
 
-    // 1. Sign in
-    console.log("Opening Google sign-in...");
-    await page.goto("https://accounts.google.com/signin", { waitUntil: "networkidle" });
-
-    if (YT_PASSWORD) {
-      // Auto-fill credentials
-      console.log("Auto-filling email...");
-      await page.fill('input[type="email"]', YT_EMAIL);
-      await page.click("#identifierNext");
-      await page.waitForTimeout(2000);
-      console.log("Auto-filling password...");
-      await page.fill('input[type="password"]', YT_PASSWORD);
-      await page.click("#passwordNext");
-      await page.waitForURL(/myaccount|youtube/, { timeout: 30000 });
-    } else {
-      // Manual login
-      console.log(`Fill email: ${YT_EMAIL}, then enter password + 2FA manually`);
-      await page.fill('input[type="email"]', YT_EMAIL);
-      await page.click("#identifierNext");
-      console.log("Waiting for you to complete login manually...");
-      await page.waitForURL(/myaccount|youtube/, { timeout: 120000 });
-    }
-    console.log("Signed in successfully.");
-
-    // 2. Navigate to YouTube Studio
     await page.goto("https://studio.youtube.com", { waitUntil: "networkidle" });
-    await page.waitForTimeout(3000);
 
-    // 3. Click "Create" button
+    // Click "Create" button
+    await page.waitForSelector("ytcp-button#create-icon", { timeout: 15000 });
     await page.click("ytcp-button#create-icon");
     await page.waitForTimeout(2000);
 
-    // 4. Click "Upload videos"
+    // Click "Upload videos"
     await page.click("ytcp-ve[action='upload']");
     await page.waitForTimeout(2000);
 
-    // 5. Upload file
+    // Upload file
     const fileInput = page.locator("input[type='file']");
     await fileInput.setInputFiles(videoPath);
     console.log("File selected, waiting for upload...");
 
-    // 6. Wait for upload to complete
+    // Wait for upload to complete
     await page.waitForSelector("ytcp-video-title-form", { timeout: 120000 });
     console.log("Upload completed, filling metadata...");
 
-    // 7. Fill title
+    // Fill title
     const videoTitle = entry.title || path.parse(entry.file).name;
     const titleInput = page.locator("#title-textarea");
     await titleInput.click();
     await titleInput.fill(videoTitle);
 
-    // 8. Fill description
+    // Fill description
     if (entry.description) {
       const descInput = page.locator("#description-textarea");
       await descInput.click();
       await descInput.fill(entry.description);
     }
 
-    // 9. Add tags
+    // Add tags
     if (tags.length > 0) {
       const tagsInput = page.locator("ytcp-form-input-container#tags-container input");
       if (await tagsInput.isVisible()) {
@@ -209,14 +203,14 @@ async function uploadVideo(browser, entry) {
       }
     }
 
-    // 10. Handle "Made for Kids"
+    // Handle "Made for Kids"
     await page.waitForTimeout(2000);
     const notForKids = page.locator("tp-yt-paper-radio-button[name='NOT_MADE_FOR_KIDS']");
     if (await notForKids.isVisible()) {
       await notForKids.click();
     }
 
-    // 11. Click NEXT through the panels
+    // Click NEXT through the panels
     for (let step = 0; step < 3; step++) {
       await page.waitForTimeout(1500);
       const nextBtn = page.locator("ytcp-button:has-text('Next')");
@@ -225,7 +219,7 @@ async function uploadVideo(browser, entry) {
       }
     }
 
-    // 12. Set visibility on final panel
+    // Set visibility on final panel
     await page.waitForTimeout(2000);
     await page.waitForSelector("ytcp-visibility-select", { timeout: 15000 });
 
@@ -257,7 +251,7 @@ async function uploadVideo(browser, entry) {
       await page.waitForTimeout(1000);
     }
 
-    // 13. Click DONE
+    // Click DONE
     const doneBtn = page.locator("ytcp-button:has-text('Done')");
     await doneBtn.click();
 
@@ -267,18 +261,27 @@ async function uploadVideo(browser, entry) {
     console.error(`✗ Failed: ${entry.file} — ${err.message}`);
     await page.screenshot({ path: `error-${entry.file}.png` });
   } finally {
-    await context.close();
+    await page.close();
   }
 }
 
+// ── Main ─────────────────────────────────────────────────────
+
 async function main() {
-  const browser = await chromium.launch({ headless: false });
+  const context = await firefox.launchPersistentContext(PROFILE_DIR, {
+    headless: false,
+    locale: "en-US",
+    timezoneId: "America/New_York",
+  });
+
+  const firstPage = context.pages()[0] || await context.newPage();
+  await ensureLoggedIn(firstPage);
 
   for (const entry of filesToUpload) {
-    await uploadVideo(browser, entry);
+    await uploadVideo(context, entry);
   }
 
-  await browser.close();
+  await context.close();
   console.log("\nAll uploads complete!");
 }
 
