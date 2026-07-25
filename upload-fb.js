@@ -10,7 +10,7 @@ const useFirefox = process.argv.slice(2).includes("--firefox");
 const PROFILE_DIR = path.resolve(useFirefox ? "firefox-profile" : "chrome-profile");
 if (!existsSync(PROFILE_DIR)) mkdirSync(PROFILE_DIR, { recursive: true });
 
-// ── Read schedule (CSV or JSON) ──────────────────────────────
+// ── Read schedule ─────────────────────────────────────────────
 
 function readCSVLines(filePath) {
   if (!existsSync(filePath)) return [];
@@ -54,7 +54,6 @@ function readSchedule() {
     publish_at: headers.indexOf("publish_at"),
   };
   if (idx.filename === -1) return null;
-
   const entries = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCSVLine(lines[i]);
@@ -91,7 +90,46 @@ entries.forEach((e, i) => {
   console.log(`  ${i + 1}. ${e.filename}${sched}`);
 });
 
-// ── Upload each reel ─────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────
+
+async function dumpButtons(page, label) {
+  const buttons = await page.evaluate(() => {
+    const results = [];
+    const seen = new Set();
+    for (const sel of ["button", "div[role='button']", "[aria-label]", "a[role='button']"]) {
+      for (const el of document.querySelectorAll(sel)) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+        const text = (el.textContent || "").trim().slice(0, 80);
+        const aria = el.getAttribute("aria-label") || "";
+        const key = `${aria}|${text}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push({ tag: el.tagName, role: el.getAttribute("role") || "", aria, text, pos: `${Math.round(rect.left)},${Math.round(rect.top)}` });
+      }
+    }
+    return results;
+  });
+  console.log(`\n=== ปุ่มทั้งหมด (${label}) ===`);
+  for (const b of buttons) {
+    if (b.aria || b.text) {
+      console.log(`  role="${b.role}" aria="${b.aria}" text="${b.text}"`);
+    }
+  }
+}
+
+async function findAndClick(page, selectors, name, timeout = 5000) {
+  for (const sel of selectors) {
+    const el = page.locator(sel).first();
+    if (await el.isVisible({ timeout }).catch(() => false)) {
+      console.log(`  Found ${name}: ${sel}`);
+      await el.click();
+      await page.waitForTimeout(1000);
+      return true;
+    }
+  }
+  return false;
+}
 
 async function ensureLoggedIn(page) {
   await page.goto("https://www.facebook.com", { waitUntil: "domcontentloaded", timeout: 30000 });
@@ -99,24 +137,18 @@ async function ensureLoggedIn(page) {
 
   if (page.url().includes("login") || page.url().includes("checkpoint")) {
     console.log("\n==============================================");
-    const browserName = useFirefox ? "Firefox" : "Chrome";
-    console.log(`  กรุณาล็อกอิน Facebook ในหน้าต่าง ${browserName} ที่เปิดอยู่`);
+    console.log(`  กรุณาล็อกอิน Facebook ในหน้าต่างที่เปิดอยู่`);
     console.log("  แล้วกลับมาที่ Terminal แล้วกด Enter");
-    console.log("  (ถ้าหน้าเว็บรีเฟรชไม่หยุด ให้ลบ chrome-profile/ แล้วรันใหม่)");
     console.log("==============================================\n");
     await new Promise((resolve) => process.stdin.once("data", resolve));
-
-    // Wait for login to complete (URL no longer contains login)
     for (let i = 0; i < 30; i++) {
       await page.waitForTimeout(2000);
       const url = page.url();
       if (!url.includes("login") && !url.includes("checkpoint") && !url.includes("captcha")) {
         console.log("  Login detected!");
-        break;
+        return;
       }
-      if (i === 15) {
-        console.log("  กำลังรอให้ล็อกอินสำเร็จ... (รออีก 30 วินาที)");
-      }
+      if (i === 15) console.log("  กำลังรอให้ล็อกอินสำเร็จ... (รออีก 30 วินาที)");
     }
   }
 }
@@ -131,75 +163,111 @@ async function uploadReel(context, entry) {
   try {
     console.log(`\n--- Uploading reel: ${entry.filename} ---`);
 
-    // Check if logged in first
-    await page.goto("https://www.facebook.com", { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.waitForTimeout(2000);
-    if (page.url().includes("login")) {
-      console.log("  Not logged in! Please login first.");
-      return;
-    }
-
-    // Try Reels creation page directly
+    // Navigate to Reels creation
     await page.goto("https://www.facebook.com/reels/create/", { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
 
-    // If redirected away (not on create page), try alternative URLs
-    if (!page.url().includes("reels")) {
-      console.log("  Reels create page not found, trying alternative...");
-      await page.goto("https://www.facebook.com/reels/?create=1", { waitUntil: "domcontentloaded", timeout: 30000 });
-      await page.waitForTimeout(3000);
-    }
-
-    await page.waitForTimeout(2000);
-
-    // Upload file
-    const fileInput = page.locator("input[type='file']").first();
-    // Click the upload area first to make sure file input is active
-    const uploadArea = page.locator("[aria-label*='video'], [aria-label*='Upload'], [aria-label*='Select'], div:has-text('Click to upload'), div:has-text('Drag and drop')").first();
-    if (await uploadArea.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await uploadArea.click();
+    // Upload video — try multiple approaches
+    const uploadBtn = page.locator("[aria-label='อัพโหลดวิดีโอสำหรับคลิป Reels'], [aria-label='เพิ่มวิดีโอหรือลากแล้ววาง']").first();
+    if (await uploadBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await uploadBtn.click();
       await page.waitForTimeout(1000);
     }
+    const fileInput = page.locator("input[type='file']").first();
     await fileInput.setInputFiles(videoPath);
     console.log("  File selected, waiting for upload...");
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(8000);
     console.log("  Upload in progress. Facebook may take time to process.");
-    await page.screenshot({ path: `fb-after-upload-${entry.filename}.png` });
 
-    // Add caption if provided — try multiple selectors
+    // Add caption
     if (entry.description) {
-      const captionSelectors = [
-        "[aria-label='Write a caption...']",
-        "[aria-label='Write a caption']",
-        "[aria-label='Describe your reel']",
-        "[aria-label='Description']",
-        "div[contenteditable='true']",
-        "[role='textbox']",
-        "textarea",
-      ].join(", ");
-      const descInput = page.locator(captionSelectors).first();
-      if (await descInput.isVisible({ timeout: 8000 }).catch(() => false)) {
+      const captionSel = "div[contenteditable='true'], [role='textbox'], textarea, [aria-label='ระบุคำอธิบาย'], [aria-label*='caption' i]";
+      const descInput = page.locator(captionSel).first();
+      if (await descInput.isVisible({ timeout: 10000 }).catch(() => false)) {
         const tagName = await descInput.evaluate(el => el.tagName);
         if (tagName === "TEXTAREA" || tagName === "INPUT") {
           await descInput.fill(entry.description);
         } else {
-          // contenteditable div — use evaluate to preserve newlines
           await descInput.evaluate((el, text) => { el.innerText = text; }, entry.description);
         }
         console.log("  Caption filled.");
       } else {
-        console.log("  Caption input not found. Screenshot saved.");
-        await page.screenshot({ path: `fb-no-caption-${entry.filename}.png` });
+        console.log("  Caption input not found.");
       }
     }
 
-    // Let user handle Publish/Schedule manually (FB UI changes too often)
-    console.log("\n==============================================");
-    console.log("  กรุณากด Publish หรือ Schedule ในหน้า Facebook");
-    console.log("  เสร็จแล้วกลับมาที่ Terminal แล้วกด Enter");
-    console.log("==============================================\n");
+    await page.waitForTimeout(2000);
+
+    // Handle scheduling if publish_at provided
+    const pub = entry.publish_at;
+    if (pub) {
+      const dt = new Date(pub);
+      if (!isNaN(dt.getTime())) {
+        // Click visibility/schedule dropdown
+        const clicked = await findAndClick(page, [
+          "[aria-label*='แชร์กับ']",
+          "[aria-label*='Public']",
+          "[aria-label*='สาธารณะ']",
+          "[aria-label='แชร์กับ สาธารณะ']",
+          "span:has-text('สาธารณะ')",
+        ], "visibility dropdown");
+        if (clicked) {
+          await page.waitForTimeout(1500);
+          // Look for Schedule option in the dropdown
+          const schedClicked = await findAndClick(page, [
+            "span:has-text('ตั้งเวลาเผยแพร่')",
+            "span:has-text('ตั้งเวลา')",
+            "span:has-text('Schedule')",
+            "div[role='menuitem']:has-text('ตั้งเวลา')",
+            "div[role='menuitem']:has-text('กำหนดเวลา')",
+          ], "schedule option");
+          if (schedClicked) {
+            await page.waitForTimeout(1000);
+            // Fill date/time
+            const dateStr = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+            const timeStr = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+            const dateInput = page.locator("input[type='date'], [aria-label='วันที่'], input[placeholder*='วว']").first();
+            if (await dateInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+              await dateInput.fill(dateStr);
+            }
+            const timeInput = page.locator("input[type='time'], [aria-label='เวลา'], input[placeholder*='ชม']").first();
+            if (await timeInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+              await timeInput.fill(timeStr);
+            }
+            console.log("  Schedule set.");
+          }
+        }
+      }
+    }
+
+    // Dump buttons so user can help identify publish button
     await page.screenshot({ path: `fb-ready-${entry.filename}.png` });
-    await new Promise((resolve) => process.stdin.once("data", resolve));
+    await dumpButtons(page, `after upload - ${entry.filename}`);
+
+    // Try to publish auto
+    const pubClicked = await findAndClick(page, [
+      "div[aria-label='เผยแพร่']",
+      "span[aria-label='เผยแพร่']",
+      "span:has-text('เผยแพร่')",
+      "div[role='button']:has-text('เผยแพร่')",
+      "span:has-text('โพสต์')",
+      "div[role='button']:has-text('โพสต์')",
+      "span:has-text('Post')",
+      "div[role='button']:has-text('Post')",
+      "span:has-text('Publish')",
+      "div[role='button']:has-text('Publish')",
+      "span:has-text('แชร์')",
+      "div[role='button']:has-text('แชร์')",
+    ], "publish button", 3000);
+
+    if (pubClicked) {
+      console.log("  Published/Scheduled!");
+      await page.waitForTimeout(5000);
+    } else {
+      console.log("\n⚠ ไม่พบปุ่มเผยแพร่อัตโนมัติ — กรุณากดเอง แล้วกลับมากด Enter");
+      await new Promise((resolve) => process.stdin.once("data", resolve));
+    }
+
     console.log(`✓ Reel uploaded: ${entry.filename}`);
   } catch (err) {
     console.error(`✗ Failed: ${entry.filename} — ${err.message}`);
@@ -209,11 +277,10 @@ async function uploadReel(context, entry) {
   }
 }
 
-// ── Main ─────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────
 
 async function launchBrowser() {
   if (useFirefox) {
-    // Try to find real Firefox
     const candidates = [
       "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
       "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe",
@@ -226,51 +293,31 @@ async function launchBrowser() {
       } catch {}
     }
     const launchOpts = {
-      headless: false,
-      locale: "en-US",
+      headless: false, locale: "en-US",
       firefoxUserPrefs: { "dom.webdriver.enabled": false },
     };
-    if (fxPath) {
-      launchOpts.executablePath = fxPath;
-      console.log("Using real Firefox:", fxPath);
-    } else {
-      console.log("Using Playwright Firefox (system Firefox not found)");
-    }
+    if (fxPath) { launchOpts.executablePath = fxPath; console.log("Using real Firefox:", fxPath); }
+    else { console.log("Using Playwright Firefox (system Firefox not found)"); }
     return await firefox.launchPersistentContext(PROFILE_DIR, launchOpts);
   }
-
-  // Default: Chrome
-  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
-    channel: "chrome",
-    headless: false,
-    args: ["--disable-blink-features=AutomationControlled"],
-    locale: "en-US",
+  return await chromium.launchPersistentContext(PROFILE_DIR, {
+    channel: "chrome", headless: false,
+    args: ["--disable-blink-features=AutomationControlled"], locale: "en-US",
   });
-  return context;
 }
 
 async function main() {
   const context = await launchBrowser();
-
   const engine = useFirefox ? "Firefox" : "Chrome";
   context.on("page", (page) => {
-    page.addInitScript(() => {
-      Object.defineProperty(navigator, "webdriver", { get: () => false });
-    });
+    page.addInitScript(() => { Object.defineProperty(navigator, "webdriver", { get: () => false }); });
   });
-
   const firstPage = context.pages()[0] || await context.newPage();
-  await firstPage.addInitScript(() => {
-    Object.defineProperty(navigator, "webdriver", { get: () => false });
-  });
+  await firstPage.addInitScript(() => { Object.defineProperty(navigator, "webdriver", { get: () => false }); });
   console.log(`Opening ${engine} for Facebook Reels upload...`);
   await ensureLoggedIn(firstPage);
   await firstPage.close();
-
-  for (const entry of entries) {
-    await uploadReel(context, entry);
-  }
-
+  for (const entry of entries) { await uploadReel(context, entry); }
   await context.close();
   console.log("\nAll reels uploaded!");
 }
