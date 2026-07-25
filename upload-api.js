@@ -219,7 +219,11 @@ async function uploadVideo(auth, entry) {
   console.log(`  Title: ${title}`);
   console.log(`  Size: ${(fileSize / 1024 / 1024).toFixed(1)} MB`);
   if (isShorts) console.log(`  Type: Shorts`);
-  if (status.publishAt) console.log(`  Schedule: ${status.publishAt}`);
+  if (status.publishAt) {
+    console.log(`  Schedule: ${status.publishAt}`);
+  } else {
+    console.log(`  Publish: immediately (public)`);
+  }
 
   const youtube = google.youtube({ version: "v3", auth });
 

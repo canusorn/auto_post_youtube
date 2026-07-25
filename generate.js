@@ -153,7 +153,7 @@ for (let i = 0; i < videos.length; i++) {
   const prev = existing[v] || { title: "", description: "", tags: "", shorts: "", publish_at: "" };
   let pub = prev.publish_at;
 
-  if (startTime && intervalMs && !existing[v]?.publish_at?.trim()) {
+  if (startTime && intervalMs && (args.includes("--force") || !existing[v]?.publish_at?.trim())) {
     pub = nextTime ? nextTime.toISOString() : "";
     nextTime = new Date(nextTime.getTime() + intervalMs);
   }
@@ -200,3 +200,4 @@ console.log("  --start <ISO_DATE>       First publish time");
 console.log("  --interval <DURATION>    Interval (30m, 1h, 2d)");
 console.log("  --title <TITLE>          Default title ({n} = number, {name} = filename)");
 console.log("  --description <TEXT>     Default description");
+console.log("  --force                  Overwrite publish_at even if already set");
