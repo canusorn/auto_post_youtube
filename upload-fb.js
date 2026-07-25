@@ -235,14 +235,13 @@ async function uploadReel(context, entry) {
       await pubBtn.waitFor({ state: "visible", timeout: 600000 });
       await page.waitForTimeout(2000);
       await pubBtn.click();
-      console.log("  Published!");
+      console.log("  Published! Waiting for page to load...");
     } catch {
       console.log("\n⚠ ปุ่มโพสต์ไม่ทำงานหลังจาก 10 นาที — กรุณากดเอง แล้วกลับมากด Enter");
       await page.screenshot({ path: `fb-pub-timeout-${entry.filename}.png` });
       await new Promise((resolve) => process.stdin.once("data", resolve));
     }
-    await page.waitForTimeout(5000);
-
+    await page.waitForTimeout(60000);
     console.log(`✓ Reel uploaded: ${entry.filename}`);
   } catch (err) {
     console.error(`✗ Failed: ${entry.filename} — ${err.message}`);
