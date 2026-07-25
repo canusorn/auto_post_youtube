@@ -164,12 +164,31 @@ async function uploadReel(context, entry) {
     console.log(`\n--- Uploading reel: ${entry.filename} ---`);
 
     // Navigate to Reels creation
-    await page.goto("https://www.facebook.com/reels/create/", { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.waitForTimeout(4000);
+    const urls = [
+      "https://www.facebook.com/reels/create/",
+      "https://web.facebook.com/reels/create/",
+      "https://www.facebook.com/reel/create/",
+    ];
+    let fileInput = null;
+    for (const url of urls) {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.waitForTimeout(3000);
+      fileInput = page.locator("input[type='file']").first();
+      if (await fileInput.isVisible({ timeout: 5000 }).catch(() => false)) break;
+      // Try hidden input
+      try { await page.waitForSelector("input[type='file']", { timeout: 3000 }); fileInput = page.locator("input[type='file']").first(); break; } catch {}
+    }
 
-    // Upload video — use hidden file input directly, avoid native file dialog
-    const fileInput = page.locator("input[type='file']").first();
-    await page.waitForSelector("input[type='file']", { timeout: 10000 });
+    if (!fileInput || !(await fileInput.isVisible({ timeout: 1000 }).catch(() => false))) {
+      console.log("  Upload form not found. Dumping page state...");
+      await page.screenshot({ path: `fb-no-form-${entry.filename}.png` });
+      const url = page.url();
+      const hasInput = await page.evaluate(() => document.querySelector("input[type='file']") !== null);
+      console.log(`  URL: ${url}, has file input: ${hasInput}`);
+      throw new Error("Could not find upload form");
+    }
+
+    // Upload video directly via hidden file input
     await fileInput.setInputFiles(videoPath, { force: true });
     console.log("  File selected, waiting for upload...");
     await page.waitForTimeout(8000);
@@ -272,7 +291,9 @@ async function uploadReel(context, entry) {
     console.log(`✓ Reel uploaded: ${entry.filename}`);
   } catch (err) {
     console.error(`✗ Failed: ${entry.filename} — ${err.message}`);
+    console.log("  Browser will close in 10 seconds...");
     await page.screenshot({ path: `fb-error-${entry.filename}.png` });
+    await page.waitForTimeout(10000);
   } finally {
     await page.close();
   }
