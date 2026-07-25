@@ -179,15 +179,17 @@ async function uploadReel(context, entry) {
     await page.waitForTimeout(8000);
     console.log("  Upload in progress. Facebook may take time to process.");
 
-    // Click "ถัดไป" (Next) to go to the editing page
-    const nextBtn = page.locator("[aria-label='ถัดไป'], span:has-text('ถัดไป'), div[role='button']:has-text('ถัดไป')").first();
-    if (await nextBtn.isVisible({ timeout: 15000 }).catch(() => false)) {
-      await nextBtn.click();
-      console.log("  Clicked ถัดไป (Next)");
-      await page.waitForTimeout(4000);
+    // Click "ถัดไป" twice: upload → edit page → publish page
+    for (let step = 1; step <= 2; step++) {
+      const nextBtn = page.locator("[aria-label='ถัดไป'], span:has-text('ถัดไป'), div[role='button']:has-text('ถัดไป')").first();
+      if (await nextBtn.isVisible({ timeout: 15000 }).catch(() => false)) {
+        await nextBtn.click();
+        console.log(`  Clicked ถัดไป (Next) #${step}`);
+        await page.waitForTimeout(4000);
+      }
     }
 
-    // Now on editing page — add caption
+    // Now on publish page — add caption
     if (entry.description) {
       const captionSel = "div[contenteditable='true'], [role='textbox'], textarea";
       const descInput = page.locator(captionSel).first();
