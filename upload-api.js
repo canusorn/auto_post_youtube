@@ -150,7 +150,7 @@ function readSchedule() {
     entries.push({
       filename: fname,
       title: idx.title !== -1 ? cols[idx.title]?.trim() || "" : "",
-      description: idx.description !== -1 ? cols[idx.description]?.trim() || "" : "",
+      description: idx.description !== -1 ? (cols[idx.description]?.trim() || "").replace(/\\n/g, "\n") : "",
       tags: idx.tags !== -1 ? cols[idx.tags]?.trim() || "" : "",
       publish_at: idx.publish_at !== -1 ? cols[idx.publish_at]?.trim() || "" : "",
     });
