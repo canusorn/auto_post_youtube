@@ -1,11 +1,13 @@
-import { chromium } from "playwright";
+import { chromium, firefox } from "playwright";
 import "dotenv/config";
 import { existsSync, readdirSync, readFileSync, mkdirSync } from "fs";
+import { execSync } from "child_process";
 import path from "path";
 
 const JSON_FILE = "schedule.json";
 const CSV_FILE = "schedule.csv";
-const PROFILE_DIR = path.resolve("chrome-profile");
+const useFirefox = process.argv.includes("--firefox");
+const PROFILE_DIR = path.resolve(useFirefox ? "firefox-profile" : "chrome-profile");
 if (!existsSync(PROFILE_DIR)) mkdirSync(PROFILE_DIR, { recursive: true });
 
 // ── Read schedule (CSV or JSON) ──────────────────────────────
@@ -96,7 +98,8 @@ async function ensureLoggedIn(page) {
   await page.waitForTimeout(3000);
   if (page.url().includes("login")) {
     console.log("\n==============================================");
-    console.log("  กรุณาล็อกอิน Facebook ใน Chrome ที่เปิดอยู่");
+    const browserName = useFirefox ? "Firefox" : "Chrome";
+    console.log(`  กรุณาล็อกอิน Facebook ใน ${browserName} ที่เปิดอยู่`);
     console.log("  แล้วกลับมาที่ Terminal แล้วกด Enter");
     console.log("==============================================\n");
     await new Promise((resolve) => process.stdin.once("data", resolve));
@@ -185,14 +188,48 @@ async function uploadReel(context, entry) {
 
 // ── Main ─────────────────────────────────────────────────────
 
-async function main() {
+async function launchBrowser() {
+  if (useFirefox) {
+    // Try to find real Firefox
+    const candidates = [
+      "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+      "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe",
+    ];
+    let fxPath = candidates.find((p) => existsSync(p));
+    if (!fxPath) {
+      try {
+        const out = execSync("where firefox", { encoding: "utf8", shell: "cmd.exe" }).trim().split("\n")[0];
+        if (out && existsSync(out)) fxPath = out;
+      } catch {}
+    }
+    const launchOpts = {
+      headless: false,
+      locale: "en-US",
+      firefoxUserPrefs: { "dom.webdriver.enabled": false },
+    };
+    if (fxPath) {
+      launchOpts.executablePath = fxPath;
+      console.log("Using real Firefox:", fxPath);
+    } else {
+      console.log("Using Playwright Firefox (system Firefox not found)");
+    }
+    return await firefox.launchPersistentContext(PROFILE_DIR, launchOpts);
+  }
+
+  // Default: Chrome
   const context = await chromium.launchPersistentContext(PROFILE_DIR, {
     channel: "chrome",
     headless: false,
     args: ["--disable-blink-features=AutomationControlled"],
     locale: "en-US",
   });
+  return context;
+}
 
+async function main() {
+  const context = await launchBrowser();
+
+  const engine = useFirefox ? "Firefox" : "Chrome";
   context.on("page", (page) => {
     page.addInitScript(() => {
       Object.defineProperty(navigator, "webdriver", { get: () => false });
@@ -203,6 +240,7 @@ async function main() {
   await firstPage.addInitScript(() => {
     Object.defineProperty(navigator, "webdriver", { get: () => false });
   });
+  console.log(`Opening ${engine} for Facebook Reels upload...`);
   await ensureLoggedIn(firstPage);
   await firstPage.close();
 
