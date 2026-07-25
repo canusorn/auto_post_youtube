@@ -139,8 +139,8 @@ async function ensureLoggedIn(page) {
     await new Promise((resolve) => {
       process.stdin.once("data", resolve);
     });
-    // After user presses Enter, wait for studio to load
-    await page.waitForURL(/studio\.youtube\.com/, { timeout: 120000 });
+    // After user presses Enter, navigate to studio
+    await page.goto("https://studio.youtube.com", { waitUntil: "networkidle", timeout: 120000 });
   }
 }
 
@@ -148,6 +148,9 @@ async function ensureLoggedIn(page) {
 
 async function uploadVideo(context, entry) {
   const page = await context.newPage();
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => false });
+  });
   const videoPath = path.join(UPLOAD_DIR, entry.file);
   const tags = entry.tags
     ? entry.tags.split(",").map((t) => t.trim()).filter(Boolean)
@@ -158,14 +161,24 @@ async function uploadVideo(context, entry) {
   try {
     console.log(`\n--- Uploading: ${entry.file} ---`);
 
-    await page.goto("https://studio.youtube.com", { waitUntil: "networkidle" });
+    // Navigate to YouTube Studio
+    await page.goto("https://studio.youtube.com", { waitUntil: "networkidle", timeout: 30000 });
+    await page.waitForTimeout(3000);
 
-    // Click "Create" button
-    await page.waitForSelector("ytcp-button#create-icon", { timeout: 15000 });
-    await page.click("ytcp-button#create-icon");
+    // Close any dialogs that may appear
+    const dismissBtns = page.locator("ytcp-button:has-text('Dismiss'), ytcp-button:has-text('Got it'), ytcp-button:has-text('Skip')");
+    if (await dismissBtns.first().isVisible({ timeout: 2000 }).catch(() => false)) {
+      await dismissBtns.first().click();
+      await page.waitForTimeout(1000);
+    }
+
+    // Click "Create" button (top-right)
+    await page.waitForSelector("#create-icon", { timeout: 15000 });
+    await page.click("#create-icon");
     await page.waitForTimeout(2000);
 
-    // Click "Upload videos"
+    // Click "Upload videos" from the dropdown
+    await page.waitForSelector("ytcp-ve[action='upload'], tp-yt-iron-dropdown *:has-text('Upload videos')", { timeout: 10000 });
     await page.click("ytcp-ve[action='upload']");
     await page.waitForTimeout(2000);
 
@@ -174,8 +187,8 @@ async function uploadVideo(context, entry) {
     await fileInput.setInputFiles(videoPath);
     console.log("File selected, waiting for upload...");
 
-    // Wait for upload to complete
-    await page.waitForSelector("ytcp-video-title-form", { timeout: 120000 });
+    // Wait for upload to complete (video title form appears)
+    await page.waitForSelector("ytcp-video-title-form, #title-textarea", { timeout: 180000 });
     console.log("Upload completed, filling metadata...");
 
     // Fill title
@@ -194,7 +207,7 @@ async function uploadVideo(context, entry) {
     // Add tags
     if (tags.length > 0) {
       const tagsInput = page.locator("ytcp-form-input-container#tags-container input");
-      if (await tagsInput.isVisible()) {
+      if (await tagsInput.isVisible({ timeout: 3000 }).catch(() => false)) {
         for (const tag of tags) {
           await tagsInput.fill(tag);
           await tagsInput.press("Enter");
@@ -205,61 +218,73 @@ async function uploadVideo(context, entry) {
 
     // Handle "Made for Kids"
     await page.waitForTimeout(2000);
-    const notForKids = page.locator("tp-yt-paper-radio-button[name='NOT_MADE_FOR_KIDS']");
-    if (await notForKids.isVisible()) {
+    const notForKids = page.locator("#made-for-kids-group tp-yt-paper-radio-button[name='NOT_MADE_FOR_KIDS']");
+    if (await notForKids.isVisible({ timeout: 3000 }).catch(() => false)) {
       await notForKids.click();
     }
 
     // Click NEXT through the panels
     for (let step = 0; step < 3; step++) {
-      await page.waitForTimeout(1500);
-      const nextBtn = page.locator("ytcp-button:has-text('Next')");
-      if (await nextBtn.isVisible()) {
+      await page.waitForTimeout(2000);
+      const nextBtn = page.locator("ytcp-button:has-text('Next'), ytcp-button#next-button");
+      if (await nextBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
         await nextBtn.click();
       }
     }
 
-    // Set visibility on final panel
-    await page.waitForTimeout(2000);
-    await page.waitForSelector("ytcp-visibility-select", { timeout: 15000 });
+    // Wait for visibility panel
+    await page.waitForTimeout(3000);
 
+    // Set visibility
     if (entry.publish_at) {
       const d = new Date(entry.publish_at);
-      if (isNaN(d.getTime())) {
-        console.warn(`  Invalid publish_at for ${entry.file}, publishing immediately`);
+      if (!isNaN(d.getTime())) {
+        const scheduleRadio = page.locator("tp-yt-paper-radio-button[name='SCHEDULE'], #schedule-radio");
+        if (await scheduleRadio.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await scheduleRadio.click();
+          await page.waitForTimeout(1000);
+
+          const dateInput = page.locator("#schedule-date, #date-input");
+          await dateInput.click();
+          const dateStr = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+          await dateInput.fill(dateStr);
+          await dateInput.press("Tab");
+
+          const timeInput = page.locator("#schedule-time, #time-input");
+          await timeInput.click();
+          const timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+          await timeInput.fill(timeStr);
+          await timeInput.press("Tab");
+          console.log(`  Scheduled for: ${entry.publish_at}`);
+        }
       } else {
-        const scheduleRadio = page.locator("tp-yt-paper-radio-button[name='SCHEDULE']");
-        await scheduleRadio.click();
-        await page.waitForTimeout(1000);
-
-        const dateInput = page.locator("#schedule-date");
-        await dateInput.click();
-        const dateStr = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
-        await dateInput.fill(dateStr);
-        await dateInput.press("Tab");
-
-        const timeInput = page.locator("#schedule-time");
-        await timeInput.click();
-        const timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-        await timeInput.fill(timeStr);
-        await timeInput.press("Tab");
-        console.log(`  Scheduled for: ${entry.publish_at}`);
+        console.warn(`  Invalid publish_at for ${entry.file}, publishing immediately`);
+        const publicRadio = page.locator("tp-yt-paper-radio-button[name='PUBLIC'], #public-radio");
+        if (await publicRadio.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await publicRadio.click();
+          await page.waitForTimeout(1000);
+        }
       }
     } else {
-      const publicRadio = page.locator("tp-yt-paper-radio-button[name='PUBLIC']");
-      await publicRadio.click();
-      await page.waitForTimeout(1000);
+      const publicRadio = page.locator("tp-yt-paper-radio-button[name='PUBLIC'], #public-radio");
+      if (await publicRadio.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await publicRadio.click();
+        await page.waitForTimeout(1000);
+      }
     }
 
-    // Click DONE
-    const doneBtn = page.locator("ytcp-button:has-text('Done')");
-    await doneBtn.click();
+    // Click DONE / PUBLISH
+    const doneBtn = page.locator("ytcp-button:has-text('Done'), ytcp-button:has-text('PUBLISH'), ytcp-button#done-button");
+    if (await doneBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await doneBtn.click();
+    }
 
     await page.waitForTimeout(5000);
     console.log(`✓ Uploaded: ${entry.file}`);
   } catch (err) {
     console.error(`✗ Failed: ${entry.file} — ${err.message}`);
     await page.screenshot({ path: `error-${entry.file}.png` });
+    console.log(`  Screenshot saved: error-${entry.file}.png`);
   } finally {
     await page.close();
   }
