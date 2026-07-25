@@ -212,19 +212,27 @@ async function uploadReel(context, entry) {
         console.log("  Scheduling-related elements:");
         for (const x of allText) console.log(`    <${x.tag}> aria="${x.aria}" text="${x.text}"`);
 
-        // Try clicking schedule options then look for date inputs
-        const schedBtn = page.locator(":has-text('ตัวเลือกการกำหนดเวลา'), :has-text('กำหนดเวลาเผยแพร่'), :has-text('Schedule')").first();
+        // Click schedule options button with force
+        const schedBtn = page.locator(":has-text('ตัวเลือกการกำหนดเวลา')").first();
         if (await schedBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
           console.log("  Clicking schedule options button...");
-          await schedBtn.click();
-          await page.waitForTimeout(1500);
+          await schedBtn.click({ force: true });
+          await page.waitForTimeout(3000);
+          // Check what elements appeared after click
+          const popupEls = await page.evaluate(() => {
+            const all = document.querySelectorAll("[role='dialog'], [role='menu'], [role='listbox'], [data-pagelet]");
+            return Array.from(all).map(el => el.getAttribute("role") + " " + (el.textContent || "").trim().slice(0, 80));
+          });
+          console.log("  Popup elements:", popupEls.length ? popupEls : "none");
         }
-        const scheduleOpt = page.locator(":has-text('ตั้งเวลา'), :has-text('Schedule post')").first();
-        if (await scheduleOpt.isVisible({ timeout: 3000 }).catch(() => false)) {
+        // Look for schedule option in any popup
+        const scheduleOpt = page.locator("text=ตั้งเวลาเผยแพร่, text=ตั้งเวลา, text=Schedule, :has-text('วัน')").first();
+        if (await scheduleOpt.isVisible({ timeout: 5000 }).catch(() => false)) {
           console.log("  Selecting schedule option...");
           await scheduleOpt.click();
-          await page.waitForTimeout(1000);
+          await page.waitForTimeout(1500);
         }
+        // Try to fill date/time inputs
         const dateStr = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
         const timeStr = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
         const dateInput = page.locator("input[type='date']").first();
@@ -236,7 +244,7 @@ async function uploadReel(context, entry) {
           await timeInput.fill(timeStr); console.log("  Time set.");
         }
         if (!await dateInput.isVisible({ timeout: 1000 }).catch(() => false)) {
-          console.log("  Date input not found. Scheduling may have failed.");
+          console.log("  Date input not found — scheduling probably failed.");
         }
       }
     }
