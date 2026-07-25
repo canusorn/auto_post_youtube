@@ -163,33 +163,23 @@ async function uploadReel(context, entry) {
   try {
     console.log(`\n--- Uploading reel: ${entry.filename} ---`);
 
-    // Navigate to Reels creation
-    const urls = [
-      "https://www.facebook.com/reels/create/",
-      "https://web.facebook.com/reels/create/",
-      "https://www.facebook.com/reel/create/",
-    ];
-    let fileInput = null;
-    for (const url of urls) {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-      await page.waitForTimeout(3000);
-      fileInput = page.locator("input[type='file']").first();
-      if (await fileInput.isVisible({ timeout: 5000 }).catch(() => false)) break;
-      // Try hidden input
-      try { await page.waitForSelector("input[type='file']", { timeout: 3000 }); fileInput = page.locator("input[type='file']").first(); break; } catch {}
+    // Navigate to Reels creation page
+    await page.goto("https://www.facebook.com/reels/create/", { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForTimeout(5000);
+
+    // Click upload button and intercept file chooser dialog
+    const uploadBtn = page.locator("[aria-label='อัพโหลดวิดีโอสำหรับคลิป Reels'], [aria-label='เพิ่มวิดีโอหรือลากแล้ววาง']").first();
+    if (!(await uploadBtn.isVisible({ timeout: 10000 }).catch(() => false))) {
+      console.log("  Upload button not found.");
+      await page.screenshot({ path: `fb-no-upload-btn-${entry.filename}.png` });
+      throw new Error("Could not find upload button");
     }
 
-    if (!fileInput || !(await fileInput.isVisible({ timeout: 1000 }).catch(() => false))) {
-      console.log("  Upload form not found. Dumping page state...");
-      await page.screenshot({ path: `fb-no-form-${entry.filename}.png` });
-      const url = page.url();
-      const hasInput = await page.evaluate(() => document.querySelector("input[type='file']") !== null);
-      console.log(`  URL: ${url}, has file input: ${hasInput}`);
-      throw new Error("Could not find upload form");
-    }
-
-    // Upload video directly via hidden file input
-    await fileInput.setInputFiles(videoPath, { force: true });
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent("filechooser", { timeout: 15000 }),
+      uploadBtn.click(),
+    ]);
+    await fileChooser.setFiles(videoPath);
     console.log("  File selected, waiting for upload...");
     await page.waitForTimeout(8000);
     console.log("  Upload in progress. Facebook may take time to process.");
