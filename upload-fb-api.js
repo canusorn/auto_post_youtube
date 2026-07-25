@@ -1,0 +1,148 @@
+import "dotenv/config";
+import { existsSync, readdirSync, readFileSync } from "fs";
+import path from "path";
+
+const JSON_FILE = "schedule.json";
+const CSV_FILE = "schedule.csv";
+const UPLOAD_DIR = path.resolve("upload");
+
+const FACEBOOK_API_VERSION = "v22.0";
+const PAGE_ID = process.env.FACEBOOK_PAGE_ID;
+const ACCESS_TOKEN = process.env.FACEBOOK_ACCESS_TOKEN;
+
+if (!PAGE_ID || !ACCESS_TOKEN) {
+  console.error("Missing FACEBOOK_PAGE_ID or FACEBOOK_ACCESS_TOKEN in .env");
+  process.exit(1);
+}
+
+const videoExts = new Set([".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv"]);
+
+// ── Read schedule ─────────────────────────────────────────────
+
+function readCSVLines(filePath) {
+  if (!existsSync(filePath)) return [];
+  const raw = readFileSync(filePath, "utf-8");
+  const lines = [];
+  let current = "";
+  let inQuotes = false;
+  for (const ch of raw) {
+    if (ch === '"') { inQuotes = !inQuotes; current += ch; }
+    else if (ch === "\n" && !inQuotes) { lines.push(current); current = ""; }
+    else { current += ch; }
+  }
+  if (current.trim()) lines.push(current);
+  return lines;
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+  for (const ch of line) {
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === "," && !inQuotes) { result.push(current); current = ""; }
+    else { current += ch; }
+  }
+  result.push(current);
+  return result;
+}
+
+function readSchedule() {
+  if (existsSync(JSON_FILE)) return JSON.parse(readFileSync(JSON_FILE, "utf-8"));
+  if (!existsSync(CSV_FILE)) return null;
+  const lines = readCSVLines(CSV_FILE);
+  if (lines.length < 2) return null;
+  const headers = parseCSVLine(lines[0]).map((h) => h.trim());
+  const idx = {
+    filename: headers.indexOf("filename"),
+    title: headers.indexOf("title"),
+    description: headers.indexOf("description"),
+    tags: headers.indexOf("tags"),
+    publish_at: headers.indexOf("publish_at"),
+  };
+  if (idx.filename === -1) return null;
+  const entries = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCSVLine(lines[i]);
+    const fname = cols[idx.filename]?.trim();
+    if (!fname) continue;
+    entries.push({
+      filename: fname,
+      title: idx.title !== -1 ? cols[idx.title]?.trim() || "" : "",
+      description: idx.description !== -1 ? (cols[idx.description]?.trim() || "").replace(/\\n/g, "\n") : "",
+      publish_at: idx.publish_at !== -1 ? cols[idx.publish_at]?.trim() || "" : "",
+    });
+  }
+  return entries;
+}
+
+// ── Resolve files ────────────────────────────────────────────
+
+if (!existsSync(UPLOAD_DIR)) { console.error("upload folder not found"); process.exit(1); }
+
+let entries = readSchedule();
+if (!entries) {
+  const files = readdirSync(UPLOAD_DIR).filter((f) => videoExts.has(path.extname(f).toLowerCase())).sort();
+  entries = files.map((f) => ({ filename: f, title: "", description: "", publish_at: "" }));
+}
+
+entries = entries.filter((e) => existsSync(path.join(UPLOAD_DIR, e.filename)));
+if (entries.length === 0) { console.log("No video files to upload"); process.exit(0); }
+
+console.log(`\nUpload queue (${entries.length} file(s)):`);
+entries.forEach((e, i) => {
+  const sched = e.publish_at ? ` @ ${e.publish_at}` : " (immediate)";
+  console.log(`  ${i + 1}. ${e.filename}${sched}`);
+});
+
+// ── Upload via Graph API ──────────────────────────────────────
+
+async function uploadVideo(entry) {
+  const videoPath = path.join(UPLOAD_DIR, entry.filename);
+  const fileSize = existsSync(videoPath) ? readFileSync(videoPath).length : 0;
+  const caption = entry.description || "";
+  const endpoint = `https://graph.facebook.com/${FACEBOOK_API_VERSION}/${PAGE_ID}/videos`;
+
+  const body = new FormData();
+  body.append("source", new File([readFileSync(videoPath)], entry.filename));
+  body.append("description", caption);
+  body.append("access_token", ACCESS_TOKEN);
+
+  if (entry.publish_at) {
+    const ts = Math.floor(new Date(entry.publish_at).getTime() / 1000);
+    if (!isNaN(ts)) {
+      body.append("published", "false");
+      body.append("scheduled_publish_time", String(ts));
+      console.log(`  Schedule: ${entry.publish_at}`);
+    }
+  }
+
+  console.log(`\nUploading: ${entry.filename}`);
+  console.log(`  Size: ${(fileSize / 1024 / 1024).toFixed(1)} MB`);
+
+  const res = await fetch(endpoint, { method: "POST", body });
+  const data = await res.json();
+
+  if (data.id) {
+    console.log(`  ✓ Uploaded! Video ID: ${data.id}`);
+    if (data.scheduled_publish_time) {
+      console.log(`  ✓ Scheduled for: ${new Date(data.scheduled_publish_time * 1000).toISOString()}`);
+    }
+  } else {
+    console.error(`  ✗ Failed: ${JSON.stringify(data)}`);
+  }
+}
+
+// ── Main ──────────────────────────────────────────────────────
+
+async function main() {
+  for (const entry of entries) {
+    await uploadVideo(entry);
+  }
+  console.log("\nAll uploads complete!");
+}
+
+main().catch((err) => {
+  console.error("Error:", err.message);
+  process.exit(1);
+});

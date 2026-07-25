@@ -82,17 +82,30 @@ node upload.js --firefox
 
 ### Facebook Reels
 
+#### ผ่าน API (แนะนำ — ไม่ต้องใช้ browser)
+
+```bash
+npm run upload-fb-api
+```
+
+- ใช้ Facebook Graph API โดยตรง ไม่ต้องเปิด browser
+- **ต้องตั้งค่า** ก่อน: ดูวิธีใน `.env.example`
+  - สร้าง Facebook App ที่ https://developers.facebook.com
+  - ไปที่ Graph API Explorer → ขอ permission `pages_manage_posts` → Get Page Access Token
+  - ใส่ `FACEBOOK_PAGE_ID` และ `FACEBOOK_ACCESS_TOKEN` ใน `.env`
+- รองรับการตั้งเวลาผ่าน `publish_at`
+- Token หมดอายุใน ~60 วัน ต้อง renew
+
+#### ผ่าน Browser (Playwright)
+
 ```bash
 npm run upload-fb
 # หรือใช้ Firefox
 node upload-fb.js --firefox
 ```
 
-- สคริปต์: เปิด Chrome → ล็อกอิน → อัปโหลดวิดีโอ → กรอก caption
-- **จากนั้นรอให้กด Publish/Schedule เอง** — เพราะ Facebook เปลี่ยน UI ตลอด
-- เสร็จแล้วกลับมา Terminal กด Enter
+- สคริปต์: เปิด Chrome → อัปโหลดวิดีโอ → กรอก caption → **รอกด Publish/Schedule เอง**
 - session ถูกบันทึกไว้ ไม่ต้องล็อกอินซ้ำ
-- Facebook Reels รองรับการตั้งเวลาผ่านเว็บ
 - **ถ้าหน้าเว็บรีเฟรชไม่หยุด**: ให้ลบ `chrome-profile/` หรือ `firefox-profile/` แล้วรันใหม่
 
 ---
