@@ -193,15 +193,12 @@ async function uploadReel(context, entry) {
 
     // Now on publish page — add caption
     if (entry.description) {
-      const captionSel = "div[contenteditable='true'], [role='textbox'], textarea";
+      const captionSel = "[aria-label='คลิป Reels'] div[contenteditable='true'], [contenteditable='true']";
       const descInput = page.locator(captionSel).first();
       if (await descInput.isVisible({ timeout: 10000 }).catch(() => false)) {
-        const tagName = await descInput.evaluate(el => el.tagName);
-        if (tagName === "TEXTAREA" || tagName === "INPUT") {
-          await descInput.fill(entry.description);
-        } else {
-          await descInput.evaluate((el, text) => { el.innerText = text; }, entry.description);
-        }
+        await descInput.click();
+        await page.waitForTimeout(500);
+        await descInput.evaluate((el, text) => { el.innerText = text; }, entry.description);
         console.log("  Caption filled.");
       } else {
         console.log("  Caption input not found.");
@@ -251,26 +248,20 @@ async function uploadReel(context, entry) {
     await page.screenshot({ path: `fb-ready-${entry.filename}.png` });
     await dumpButtons(page, `editing page - ${entry.filename}`);
 
-    // Wait for publish button to become enabled (up to 10 min for processing)
+    // Wait for publish button and click it
     console.log("  Waiting for publish button to become active...");
-    const pubSelector = "div[aria-label='เผยแพร่'], span[aria-label='เผยแพร่'], span:has-text('เผยแพร่'), div[role='button']:has-text('เผยแพร่'), span:has-text('โพสต์'), div[role='button']:has-text('โพสต์'), [aria-label='โพสต์']";
+    const pubBtn = page.locator("[aria-label='โพสต์'], [aria-label='เผยแพร่'], [aria-label='Post']").first();
     try {
-      await page.waitForFunction((sel) => {
-        const btn = document.querySelector(sel);
-        if (!btn) return false;
-        if (btn.hasAttribute('disabled') || btn.getAttribute('aria-disabled') === 'true') return false;
-        const rect = btn.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-      }, pubSelector, { timeout: 600000 });
-      const pubBtn = page.locator(pubSelector).first();
+      await pubBtn.waitFor({ state: "visible", timeout: 600000 });
+      await page.waitForTimeout(2000);
       await pubBtn.click();
-      console.log("  Published/Scheduled!");
-      await page.waitForTimeout(5000);
+      console.log("  Published!");
     } catch {
-      console.log("\n⚠ ปุ่มเผยแพร่ยังไม่ active หลังจาก 10 นาที — กรุณากดเอง แล้วกลับมากด Enter");
+      console.log("\n⚠ ปุ่มโพสต์ไม่ทำงานหลังจาก 10 นาที — กรุณากดเอง แล้วกลับมากด Enter");
       await page.screenshot({ path: `fb-pub-timeout-${entry.filename}.png` });
       await new Promise((resolve) => process.stdin.once("data", resolve));
     }
+    await page.waitForTimeout(5000);
 
     console.log(`✓ Reel uploaded: ${entry.filename}`);
   } catch (err) {
