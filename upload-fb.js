@@ -180,18 +180,15 @@ async function uploadReel(context, entry) {
       uploadBtn.click(),
     ]);
     await fileChooser.setFiles(videoPath);
-    console.log("  File selected, waiting for upload...");
-    await page.waitForTimeout(8000);
-    console.log("  Upload in progress. Facebook may take time to process.");
+    console.log("  File selected, waiting for upload to complete...");
 
-    // Click "ถัดไป" twice: upload → edit page → publish page
+    // Wait for upload to finish by watching for "ถัดไป" button (up to 10 min)
     for (let step = 1; step <= 2; step++) {
-      const nextBtn = page.locator("[aria-label='ถัดไป'], span:has-text('ถัดไป'), div[role='button']:has-text('ถัดไป')").first();
-      if (await nextBtn.isVisible({ timeout: 15000 }).catch(() => false)) {
-        await nextBtn.click();
-        console.log(`  Clicked ถัดไป (Next) #${step}`);
-        await page.waitForTimeout(4000);
-      }
+      const btn = page.locator("[aria-label='ถัดไป'], span:has-text('ถัดไป'), div[role='button']:has-text('ถัดไป')").first();
+      await btn.waitFor({ state: "visible", timeout: 600000 });
+      await btn.click();
+      console.log(`  Clicked ถัดไป #${step}`);
+      await page.waitForTimeout(4000);
     }
 
     // Now on publish page — add caption
