@@ -212,39 +212,55 @@ async function uploadReel(context, entry) {
         console.log("  Scheduling-related elements:");
         for (const x of allText) console.log(`    <${x.tag}> aria="${x.aria}" text="${x.text}"`);
 
-        // Click schedule options button with force
+        // Click schedule options button to open dialog
         const schedBtn = page.locator(":has-text('ตัวเลือกการกำหนดเวลา')").first();
-        if (await schedBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          console.log("  Clicking schedule options button...");
-          await schedBtn.click({ force: true });
-          await page.waitForTimeout(3000);
-          // Check what elements appeared after click
-          const popupEls = await page.evaluate(() => {
-            const all = document.querySelectorAll("[role='dialog'], [role='menu'], [role='listbox'], [data-pagelet]");
-            return Array.from(all).map(el => el.getAttribute("role") + " " + (el.textContent || "").trim().slice(0, 80));
-          });
-          console.log("  Popup elements:", popupEls.length ? popupEls : "none");
-        }
-        // Look for schedule option in any popup
-        const scheduleOpt = page.locator("text=ตั้งเวลาเผยแพร่, text=ตั้งเวลา, text=Schedule, :has-text('วัน')").first();
-        if (await scheduleOpt.isVisible({ timeout: 5000 }).catch(() => false)) {
-          console.log("  Selecting schedule option...");
-          await scheduleOpt.click();
+        await schedBtn.click({ force: true });
+        console.log("  Waiting for schedule dialog...");
+        await page.waitForTimeout(3000);
+
+        // In the dialog, look for scheduling toggle/option
+        const dialog = page.locator("[role='dialog']").first();
+        const schedText = await dialog.evaluate(el => el.textContent || "");
+        console.log("  Dialog text:", schedText.replace(/\n/g, " ").slice(0, 120));
+
+        // Click "Publish now" / current schedule option to change it
+        const nowBtn = dialog.locator(":has-text('เผยแพร่เลย'), :has-text('Publish now')").first();
+        if (await nowBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await nowBtn.click();
           await page.waitForTimeout(1500);
         }
-        // Try to fill date/time inputs
+
+        // Look for and click "ตั้งเวลา" (Schedule) option
+        const setTime = dialog.locator(":has-text('ตั้งเวลา'), :has-text('Schedule')").first();
+        if (await setTime.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await setTime.click();
+          await page.waitForTimeout(1000);
+          console.log("  Selected schedule option.");
+        }
+
+        // Fill date/time
         const dateStr = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
         const timeStr = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
-        const dateInput = page.locator("input[type='date']").first();
-        if (await dateInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await dateInput.fill(dateStr); console.log("  Date set.");
+        const di = dialog.locator("input[type='date']").first();
+        if (await di.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await di.fill(dateStr); console.log("  Date set.");
         }
-        const timeInput = page.locator("input[type='time']").first();
-        if (await timeInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await timeInput.fill(timeStr); console.log("  Time set.");
+        const ti = dialog.locator("input[type='time']").first();
+        if (await ti.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await ti.fill(timeStr); console.log("  Time set.");
         }
-        if (!await dateInput.isVisible({ timeout: 1000 }).catch(() => false)) {
-          console.log("  Date input not found — scheduling probably failed.");
+
+        // Close dialog by clicking Done/Confirm
+        const done = dialog.locator(":has-text('เสร็จสิ้น'), :has-text('บันทึก'), :has-text('Done'), :has-text('Save')").first();
+        if (await done.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await done.click();
+          await page.waitForTimeout(1000);
+          console.log("  Schedule dialog confirmed.");
+        } else {
+          // Try clicking outside or pressing Escape
+          await page.keyboard.press("Escape");
+          await page.waitForTimeout(1000);
+          console.log("  Closed schedule dialog (Esc).");
         }
       }
     }
