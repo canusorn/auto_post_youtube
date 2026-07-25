@@ -167,14 +167,10 @@ async function uploadReel(context, entry) {
     await page.goto("https://www.facebook.com/reels/create/", { waitUntil: "domcontentloaded", timeout: 30000 });
     await page.waitForTimeout(4000);
 
-    // Upload video — try multiple approaches
-    const uploadBtn = page.locator("[aria-label='อัพโหลดวิดีโอสำหรับคลิป Reels'], [aria-label='เพิ่มวิดีโอหรือลากแล้ววาง']").first();
-    if (await uploadBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await uploadBtn.click();
-      await page.waitForTimeout(1000);
-    }
+    // Upload video — use hidden file input directly, avoid native file dialog
     const fileInput = page.locator("input[type='file']").first();
-    await fileInput.setInputFiles(videoPath);
+    await page.waitForSelector("input[type='file']", { timeout: 10000 });
+    await fileInput.setInputFiles(videoPath, { force: true });
     console.log("  File selected, waiting for upload...");
     await page.waitForTimeout(8000);
     console.log("  Upload in progress. Facebook may take time to process.");
