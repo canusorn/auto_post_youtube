@@ -19,13 +19,19 @@ async function getOAuthClient() {
     console.log(`
 ไม่พบไฟล์ client_secret.json
 
-วิธีสร้าง:
+วิธีสร้าง (ทำตามขั้นตอนนี้ทุกข้อ):
 1. ไปที่ https://console.cloud.google.com/
 2. สร้าง Project ใหม่ → เลือกชื่อ
 3. ไปที่ APIs & Services → Library → ค้นหา "YouTube Data API v3" → Enable
-4. ไปที่ APIs & Services → Credentials → Create Credentials → OAuth client ID
-5. Application type: Desktop app → สร้าง
-6. ดาวน์โหลด JSON → บันทึกเป็น client_secret.json ในโฟลเดอร์นี้
+4. ไปที่ APIs & Services → OAuth consent screen
+   — User Type: เลือก External
+   — กรอก App name: clipflowth, User support email, Developer contact
+   — กด Save
+   — ไปที่แท็บ "Test users" → กด Add Users → ใส่อีเมลของคุณ (ที่ใช้กับ YouTube)
+   — กด Save
+5. ไปที่ APIs & Services → Credentials → Create Credentials → OAuth client ID
+   — Application type: Desktop app → สร้าง
+   — ดาวน์โหลด JSON → บันทึกเป็น client_secret.json ในโฟลเดอร์นี้
 `);
     process.exit(1);
   }

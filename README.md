@@ -21,9 +21,14 @@ npm install
 1. ไปที่ https://console.cloud.google.com/
 2. สร้าง Project ใหม่
 3. ไปที่ **APIs & Services → Library** → ค้นหา "YouTube Data API v3" → **Enable**
-4. ไปที่ **APIs & Services → Credentials** → **Create Credentials → OAuth client ID**
-5. Application type: **Desktop app** → สร้าง
-6. กด **Download JSON** → บันทึกเป็น `client_secret.json` ในโฟลเดอร์นี้
+4. ไปที่ **APIs & Services → OAuth consent screen**
+   - User Type: **External**
+   - กรอก App name, User support email, Developer contact
+   - กด Save
+   - แท็บ **Test users** → **Add Users** → ใส่อีเมล YouTube ของคุณ
+5. ไปที่ **APIs & Services → Credentials** → **Create Credentials → OAuth client ID**
+   - Application type: **Desktop app** → สร้าง
+   - ดาวน์โหลด JSON → บันทึกเป็น `client_secret.json`
 
 ### เตรียมวิดีโอ
 
