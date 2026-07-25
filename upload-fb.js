@@ -139,41 +139,65 @@ async function uploadReel(context, entry) {
 
     await page.waitForTimeout(2000);
 
-    // Upload file
+    // Upload file — try multiple approaches
     const fileInput = page.locator("input[type='file']").first();
-    await fileInput.setInputFiles(videoPath);
+    if (await fileInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await fileInput.setInputFiles(videoPath);
+    } else {
+      // Facebook may use a hidden file input triggered by a button
+      await page.evaluate(() => {
+        const inp = document.querySelector("input[type='file']");
+        if (inp) inp.style.display = "block";
+      });
+      await page.waitForTimeout(500);
+      await fileInput.setInputFiles(videoPath);
+    }
     console.log("  File selected, waiting for upload...");
     await page.waitForTimeout(5000);
     console.log("  Upload in progress. Facebook may take time to process.");
+    await page.screenshot({ path: `fb-after-upload-${entry.filename}.png` });
 
-    // Add description if provided
+    // Add caption if provided — try multiple selectors
     if (entry.description) {
-      const descInput = page.locator("[aria-label='Describe your reel'], [aria-label='Description'], [aria-label='Write a caption'], div[contenteditable='true']").first();
+      const captionSelectors = [
+        "[aria-label='Write a caption...']",
+        "[aria-label='Write a caption']",
+        "[aria-label='Describe your reel']",
+        "[aria-label='Description']",
+        "div[contenteditable='true']",
+        "[role='textbox']",
+        "textarea",
+      ].join(", ");
+      const descInput = page.locator(captionSelectors).first();
       if (await descInput.isVisible({ timeout: 8000 }).catch(() => false)) {
         await descInput.click();
+        await page.waitForTimeout(500);
         await descInput.fill(entry.description);
-        console.log("  Description filled.");
+        console.log("  Caption filled.");
+      } else {
+        console.log("  Caption input not found. Screenshot saved.");
+        await page.screenshot({ path: `fb-no-caption-${entry.filename}.png` });
       }
     }
 
-    // Try to set visibility to Public
-    const publicBtn = page.locator("span:has-text('Public'), span:has-text('Anyone'), [aria-label='Public']").first();
-    if (await publicBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await publicBtn.click();
-      await page.waitForTimeout(1000);
-      const confirmPublic = page.locator("span:has-text('Public'), [role='menuitem']:has-text('Public')").first();
-      if (await confirmPublic.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await confirmPublic.click();
-      }
-    }
-
-    // Click Publish / Share
-    const publishBtn = page.locator("span:has-text('Publish'), span:has-text('Share'), span:has-text('Post'), [aria-label='Publish'], [aria-label='Share']").first();
+    // Click Publish
+    const publishSelectors = [
+      "span:has-text('Publish')",
+      "span:has-text('Share')",
+      "span:has-text('Post')",
+      "[aria-label='Publish']",
+      "[aria-label='Share']",
+      "[aria-label='Post']",
+      "div[role='button']:has-text('Publish')",
+      "div[role='button']:has-text('Share')",
+    ].join(", ");
+    const publishBtn = page.locator(publishSelectors).first();
     if (await publishBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await publishBtn.click();
       console.log("  Published!");
     } else {
-      console.log("  Could not find Publish button. Please check manually.");
+      console.log("  Could not find Publish button. Check screenshot.");
+      await page.screenshot({ path: `fb-no-publish-${entry.filename}.png` });
     }
 
     await page.waitForTimeout(5000);
