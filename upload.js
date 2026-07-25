@@ -271,11 +271,26 @@ async function main() {
   const context = await chromium.launchPersistentContext(PROFILE_DIR, {
     channel: "chrome",
     headless: false,
+    args: [
+      "--disable-blink-features=AutomationControlled",
+      "--no-first-run",
+      "--no-default-browser-check",
+    ],
     locale: "en-US",
     timezoneId: "America/New_York",
   });
 
+  // Override automation detection on every new page
+  context.on("page", (page) => {
+    page.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => false });
+    });
+  });
+
   const firstPage = context.pages()[0] || await context.newPage();
+  await firstPage.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => false });
+  });
   await ensureLoggedIn(firstPage);
 
   for (const entry of filesToUpload) {
