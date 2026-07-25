@@ -293,9 +293,13 @@ async function uploadReel(context, entry) {
       ].join(", ");
       const descInput = page.locator(captionSelectors).first();
       if (await descInput.isVisible({ timeout: 8000 }).catch(() => false)) {
-        await descInput.click();
-        await page.waitForTimeout(500);
-        await descInput.fill(entry.description);
+        const tagName = await descInput.evaluate(el => el.tagName);
+        if (tagName === "TEXTAREA" || tagName === "INPUT") {
+          await descInput.fill(entry.description);
+        } else {
+          // contenteditable div — use evaluate to preserve newlines
+          await descInput.evaluate((el, text) => { el.innerText = text; }, entry.description);
+        }
         console.log("  Caption filled.");
       } else {
         console.log("  Caption input not found. Screenshot saved.");
