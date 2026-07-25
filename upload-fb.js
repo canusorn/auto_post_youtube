@@ -92,32 +92,6 @@ entries.forEach((e, i) => {
 
 // ── Helpers ───────────────────────────────────────────────────
 
-async function dumpButtons(page, label) {
-  const buttons = await page.evaluate(() => {
-    const results = [];
-    const seen = new Set();
-    for (const sel of ["button", "div[role='button']", "[aria-label]", "a[role='button']"]) {
-      for (const el of document.querySelectorAll(sel)) {
-        const rect = el.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) continue;
-        const text = (el.textContent || "").trim().slice(0, 80);
-        const aria = el.getAttribute("aria-label") || "";
-        const key = `${aria}|${text}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        results.push({ tag: el.tagName, role: el.getAttribute("role") || "", aria, text, pos: `${Math.round(rect.left)},${Math.round(rect.top)}` });
-      }
-    }
-    return results;
-  });
-  console.log(`\n=== ปุ่มทั้งหมด (${label}) ===`);
-  for (const b of buttons) {
-    if (b.aria || b.text) {
-      console.log(`  role="${b.role}" aria="${b.aria}" text="${b.text}"`);
-    }
-  }
-}
-
 async function findAndClick(page, selectors, name, timeout = 5000) {
   for (const sel of selectors) {
     const el = page.locator(sel).first();
@@ -196,15 +170,10 @@ async function uploadReel(context, entry) {
       const captionSel = "[aria-label='คลิป Reels'] [contenteditable='true']";
       const descInput = page.locator(captionSel).first();
       if (await descInput.isVisible({ timeout: 10000 }).catch(() => false)) {
-        const tag = await descInput.evaluate(el => el.tagName + " role=" + el.getAttribute("role"));
-        console.log(`  Caption element: ${tag}`);
         await descInput.click();
         await page.waitForTimeout(500);
         await descInput.fill(entry.description);
-        console.log("  Caption filled (via fill).");
-        // Verify
-        const text = await descInput.evaluate(el => el.innerText);
-        console.log(`  Caption text: "${text.slice(0, 50)}..."`);
+        console.log("  Caption filled.");
       } else {
         console.log("  Caption input not found within form, trying fallback...");
         const fallback = page.locator("[contenteditable='true'], [role='textbox']").first();
@@ -258,10 +227,6 @@ async function uploadReel(context, entry) {
         }
       }
     }
-
-    // Dump buttons on editing page
-    await page.screenshot({ path: `fb-ready-${entry.filename}.png` });
-    await dumpButtons(page, `editing page - ${entry.filename}`);
 
     // Wait for publish button and click it
     console.log("  Waiting for publish button to become active...");
