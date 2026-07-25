@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import path from "path";
 
 const CSV_FILE = "schedule.csv";
@@ -166,6 +166,7 @@ for (let i = 0; i < videos.length; i++) {
 
 if (useJson) {
   writeFileSync(JSON_FILE, JSON.stringify(entries, null, 2), "utf-8");
+  if (existsSync(CSV_FILE)) unlinkSync(CSV_FILE);
   console.log(`Generated ${JSON_FILE} with ${entries.length} file(s)`);
   console.log("ใช้ editor ใดก็ได้แก้ไข — description รองรับหลายบรรทัด");
 } else {
@@ -175,6 +176,7 @@ if (useJson) {
   }
   const csvContent = csvRows.map((r) => r.map(esc).join(",")).join("\n");
   writeFileSync(CSV_FILE, csvContent, "utf-8");
+  if (existsSync(JSON_FILE)) unlinkSync(JSON_FILE);
   console.log(`Generated ${CSV_FILE} with ${entries.length} file(s)`);
 }
 
