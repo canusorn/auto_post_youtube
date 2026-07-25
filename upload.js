@@ -1,4 +1,4 @@
-import { firefox } from "playwright";
+import { chromium } from "playwright";
 import "dotenv/config";
 import { existsSync, readdirSync, readFileSync, mkdirSync } from "fs";
 import path from "path";
@@ -21,7 +21,7 @@ if (!existsSync(UPLOAD_DIR)) {
 }
 
 const CSV_FILE = "schedule.csv";
-const PROFILE_DIR = path.resolve("firefox-profile");
+const PROFILE_DIR = path.resolve("chrome-profile");
 if (!existsSync(PROFILE_DIR)) {
   mkdirSync(PROFILE_DIR, { recursive: true });
 }
@@ -132,7 +132,7 @@ async function ensureLoggedIn(page) {
   // If redirected to accounts.google.com, user is not logged in
   if (page.url().includes("accounts.google.com")) {
     console.log("\n==============================================");
-    console.log("  กรุณาล็อกอิน YouTube ใน Firefox ที่เปิดอยู่");
+    console.log("  กรุณาล็อกอิน YouTube ใน Chrome ที่เปิดอยู่");
     console.log("  ล็อกอินด้วยบัญชี: " + YT_EMAIL);
     console.log("  จากนั้นกลับมาที่ Terminal แล้วกด Enter");
     console.log("==============================================\n");
@@ -268,7 +268,8 @@ async function uploadVideo(context, entry) {
 // ── Main ─────────────────────────────────────────────────────
 
 async function main() {
-  const context = await firefox.launchPersistentContext(PROFILE_DIR, {
+  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
+    channel: "chrome",
     headless: false,
     locale: "en-US",
     timezoneId: "America/New_York",
