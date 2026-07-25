@@ -11,3 +11,6 @@ chrome-profile/
 firefox-profile/
 token.json
 client_secret.json
+*.~lock.*
+fb-*.png
+*-error-*.png
