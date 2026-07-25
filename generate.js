@@ -24,7 +24,6 @@ if (videos.length === 0) {
 // ── Parse CLI args ───────────────────────────────────────────
 
 const args = process.argv.slice(2);
-console.error("DEBUG args:", JSON.stringify(args));
 let startTime = null;
 let intervalMs = null;
 let defaultTitle = "";
