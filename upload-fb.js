@@ -179,9 +179,17 @@ async function uploadReel(context, entry) {
     await page.waitForTimeout(8000);
     console.log("  Upload in progress. Facebook may take time to process.");
 
-    // Add caption
+    // Click "ถัดไป" (Next) to go to the editing page
+    const nextBtn = page.locator("[aria-label='ถัดไป'], span:has-text('ถัดไป'), div[role='button']:has-text('ถัดไป')").first();
+    if (await nextBtn.isVisible({ timeout: 15000 }).catch(() => false)) {
+      await nextBtn.click();
+      console.log("  Clicked ถัดไป (Next)");
+      await page.waitForTimeout(4000);
+    }
+
+    // Now on editing page — add caption
     if (entry.description) {
-      const captionSel = "div[contenteditable='true'], [role='textbox'], textarea, [aria-label='ระบุคำอธิบาย'], [aria-label*='caption' i]";
+      const captionSel = "div[contenteditable='true'], [role='textbox'], textarea";
       const descInput = page.locator(captionSel).first();
       if (await descInput.isVisible({ timeout: 10000 }).catch(() => false)) {
         const tagName = await descInput.evaluate(el => el.tagName);
@@ -203,17 +211,13 @@ async function uploadReel(context, entry) {
     if (pub) {
       const dt = new Date(pub);
       if (!isNaN(dt.getTime())) {
-        // Click visibility/schedule dropdown
         const clicked = await findAndClick(page, [
           "[aria-label*='แชร์กับ']",
-          "[aria-label*='Public']",
-          "[aria-label*='สาธารณะ']",
           "[aria-label='แชร์กับ สาธารณะ']",
           "span:has-text('สาธารณะ')",
         ], "visibility dropdown");
         if (clicked) {
           await page.waitForTimeout(1500);
-          // Look for Schedule option in the dropdown
           const schedClicked = await findAndClick(page, [
             "span:has-text('ตั้งเวลาเผยแพร่')",
             "span:has-text('ตั้งเวลา')",
@@ -223,7 +227,6 @@ async function uploadReel(context, entry) {
           ], "schedule option");
           if (schedClicked) {
             await page.waitForTimeout(1000);
-            // Fill date/time
             const dateStr = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
             const timeStr = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
             const dateInput = page.locator("input[type='date'], [aria-label='วันที่'], input[placeholder*='วว']").first();
@@ -240,11 +243,11 @@ async function uploadReel(context, entry) {
       }
     }
 
-    // Dump buttons so user can help identify publish button
+    // Dump buttons on editing page
     await page.screenshot({ path: `fb-ready-${entry.filename}.png` });
-    await dumpButtons(page, `after upload - ${entry.filename}`);
+    await dumpButtons(page, `editing page - ${entry.filename}`);
 
-    // Try to publish auto
+    // Try to publish auto — look for "เผยแพร่" or "โพสต์"
     const pubClicked = await findAndClick(page, [
       "div[aria-label='เผยแพร่']",
       "span[aria-label='เผยแพร่']",
