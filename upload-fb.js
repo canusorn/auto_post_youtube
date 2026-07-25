@@ -121,6 +121,120 @@ async function ensureLoggedIn(page) {
   }
 }
 
+async function clickPublish(page, entry) {
+  const publishSelectors = [
+    "span:has-text('Publish')",
+    "span:has-text('Share')",
+    "span:has-text('Post')",
+    "[aria-label='Publish']",
+    "[aria-label='Share']",
+    "[aria-label='Post']",
+    "div[role='button']:has-text('Publish')",
+    "div[role='button']:has-text('Share')",
+  ].join(", ");
+  const publishBtn = page.locator(publishSelectors).first();
+  if (await publishBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await publishBtn.click();
+    console.log("  Published!");
+  } else {
+    console.log("  Could not find Publish button. Check screenshot.");
+    await page.screenshot({ path: `fb-no-publish-${entry.filename}.png` });
+  }
+}
+
+async function setSchedule(page, publishAt) {
+  const dt = new Date(publishAt);
+  if (isNaN(dt.getTime())) {
+    console.log(`  Invalid publish_at: ${publishAt}, publishing immediately`);
+    return clickPublish(page, { filename: "?" });
+  }
+
+  // Format date/time for FB input
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, "0");
+  const day = String(dt.getDate()).padStart(2, "0");
+  const hours = String(dt.getHours()).padStart(2, "0");
+  const mins = String(dt.getMinutes()).padStart(2, "0");
+  const dateStr = `${year}-${month}-${day}`;
+  const timeStr = `${hours}:${mins}`;
+
+  console.log(`  Setting schedule: ${dateStr} ${timeStr}`);
+
+  // Try to find a "Schedule" toggle/button/option
+  const scheduleSelectors = [
+    "[aria-label='Schedule']",
+    "[aria-label='Schedule post']",
+    "span:has-text('Schedule')",
+    "div[role='button']:has-text('Schedule')",
+    "[aria-label*='schedule']",
+    "span:has-text('Publish later')",
+    "div:has-text('Schedule post')",
+  ].join(", ");
+
+  let scheduled = false;
+  const schedEl = page.locator(scheduleSelectors).first();
+  if (await schedEl.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await schedEl.click();
+    await page.waitForTimeout(1000);
+    scheduled = true;
+    console.log("  Schedule option selected.");
+  } else {
+    // Maybe it's a dropdown on the Publish button
+    const publishDropdown = page.locator("[aria-label='Publish options'], [aria-label='More options'], div[role='button'][aria-haspopup]").first();
+    if (await publishDropdown.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await publishDropdown.click();
+      await page.waitForTimeout(1000);
+      const schedInMenu = page.locator("span:has-text('Schedule'), div[role='menuitem']:has-text('Schedule'), [role='menuitem']:has-text('Publish later')").first();
+      if (await schedInMenu.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await schedInMenu.click();
+        await page.waitForTimeout(1000);
+        scheduled = true;
+        console.log("  Schedule selected from dropdown.");
+      }
+    }
+  }
+
+  if (!scheduled) {
+    console.log("  Could not find Schedule option. Publishing immediately.");
+    await page.screenshot({ path: `fb-no-schedule.png` });
+    return clickPublish(page, { filename: "?" });
+  }
+
+  // Fill date and time inputs
+  const dateInput = page.locator("input[type='date'], [aria-label='Date'], input[placeholder*='date' i], input[placeholder*='DD' i]").first();
+  if (await dateInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await dateInput.click();
+    await dateInput.fill(dateStr);
+    console.log("  Date filled.");
+  }
+
+  const timeInput = page.locator("input[type='time'], [aria-label='Time'], input[placeholder*='time' i], input[placeholder*='HH' i]").first();
+  if (await timeInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await timeInput.click();
+    await timeInput.fill(timeStr);
+    console.log("  Time filled.");
+  }
+
+  // Click confirm/schedule button
+  const confirmSelectors = [
+    "span:has-text('Schedule')",
+    "div[role='button']:has-text('Schedule')",
+    "[aria-label='Schedule']",
+    "span:has-text('Confirm')",
+    "[aria-label='Confirm']",
+    "div[role='button']:has-text('Confirm')",
+  ].join(", ");
+  const confirmBtn = page.locator(confirmSelectors).last();
+  if (await confirmBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await confirmBtn.click();
+    console.log("  Scheduled!");
+  } else {
+    console.log("  Schedule confirm button not found. Publishing immediately.");
+    await page.screenshot({ path: `fb-no-schedule-confirm.png` });
+    return clickPublish(page, { filename: "?" });
+  }
+}
+
 async function uploadReel(context, entry) {
   const page = await context.newPage();
   await page.addInitScript(() => {
@@ -189,24 +303,11 @@ async function uploadReel(context, entry) {
       }
     }
 
-    // Click Publish
-    const publishSelectors = [
-      "span:has-text('Publish')",
-      "span:has-text('Share')",
-      "span:has-text('Post')",
-      "[aria-label='Publish']",
-      "[aria-label='Share']",
-      "[aria-label='Post']",
-      "div[role='button']:has-text('Publish')",
-      "div[role='button']:has-text('Share')",
-    ].join(", ");
-    const publishBtn = page.locator(publishSelectors).first();
-    if (await publishBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await publishBtn.click();
-      console.log("  Published!");
+    // Schedule or Publish
+    if (entry.publish_at) {
+      await setSchedule(page, entry.publish_at);
     } else {
-      console.log("  Could not find Publish button. Check screenshot.");
-      await page.screenshot({ path: `fb-no-publish-${entry.filename}.png` });
+      await clickPublish(page, entry);
     }
 
     await page.waitForTimeout(5000);

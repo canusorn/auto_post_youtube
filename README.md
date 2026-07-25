@@ -91,7 +91,7 @@ node upload-fb.js --firefox
 - ใช้ browser automation
 - ครั้งแรก: ล็อกอิน Facebook เอง แล้วกด Enter
 - session ถูกบันทึกไว้
-- Facebook Reels ไม่รองรับการตั้งเวลาผ่านเว็บ (โพสต์ทันที)
+- Facebook Reels รองรับการตั้งเวลาผ่านเว็บ (ใช้ publish_at ใน schedule)
 - **ถ้าหน้าเว็บรีเฟรชไม่หยุด**: ให้ลบ `chrome-profile/` หรือ `firefox-profile/` แล้วรันใหม่
 
 ---
