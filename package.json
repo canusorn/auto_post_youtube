@@ -6,6 +6,7 @@
   "scripts": {
     "upload": "node upload.js",
     "upload-api": "node upload-api.js",
+    "upload-fb": "node upload-fb.js",
     "generate": "node generate.js",
     "postinstall": "npx playwright install firefox"
   },
