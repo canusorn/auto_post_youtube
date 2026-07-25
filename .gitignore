@@ -6,6 +6,7 @@ error.png
 *.avi
 *.mkv
 schedule.csv
+schedule.json
 chrome-profile/
 firefox-profile/
 token.json

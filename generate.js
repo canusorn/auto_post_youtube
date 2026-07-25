@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
 
 const CSV_FILE = "schedule.csv";
+const JSON_FILE = "schedule.json";
 const UPLOAD_DIR = path.resolve("upload");
 
 const videoExts = new Set([".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv"]);
@@ -20,12 +21,14 @@ if (videos.length === 0) {
   process.exit(0);
 }
 
-// Parse CLI args
+// ── Parse CLI args ───────────────────────────────────────────
+
 const args = process.argv.slice(2);
 let startTime = null;
 let intervalMs = null;
 let defaultTitle = "";
 let defaultDescription = "";
+let useJson = false;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--start" && args[i + 1]) {
@@ -53,57 +56,82 @@ for (let i = 0; i < args.length; i++) {
   if (args[i] === "--description" && args[i + 1]) {
     defaultDescription = args[++i];
   }
+  if (args[i] === "--json") {
+    useJson = true;
+  }
 }
 
-// Parse existing CSV to preserve user edits
-function parseCSV(filePath) {
-  if (!existsSync(filePath)) return {};
-  const lines = readFileSync(filePath, "utf-8").trim().split("\n");
+// ── Read existing CSV (all multi-line fields) ────────────────
+
+function readAllCSV(filePath) {
+  if (!existsSync(filePath)) return [];
+  const raw = readFileSync(filePath, "utf-8");
+  const lines = [];
+  let current = "";
+  let inQuotes = false;
+  for (const ch of raw) {
+    if (ch === '"') { inQuotes = !inQuotes; current += ch; }
+    else if (ch === "\n" && !inQuotes) { lines.push(current); current = ""; }
+    else { current += ch; }
+  }
+  if (current.trim()) lines.push(current);
+  return lines;
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+  for (const ch of line) {
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === "," && !inQuotes) { result.push(current); current = ""; }
+    else { current += ch; }
+  }
+  result.push(current);
+  return result;
+}
+
+function loadExisting() {
+  const file = useJson ? JSON_FILE : CSV_FILE;
+  if (!existsSync(file)) return {};
+
+  if (useJson) {
+    const arr = JSON.parse(readFileSync(file, "utf-8"));
+    const map = {};
+    for (const item of arr) {
+      if (item.filename) map[item.filename] = item;
+    }
+    return map;
+  }
+
+  const lines = readAllCSV(file);
   if (lines.length < 2) return {};
-  const headers = lines[0].split(",").map((h) => h.trim());
-  const filenameIdx = headers.indexOf("filename");
-  const titleIdx = headers.indexOf("title");
-  const descIdx = headers.indexOf("description");
-  const tagsIdx = headers.indexOf("tags");
-  const pubIdx = headers.indexOf("publish_at");
-  if (filenameIdx === -1) return {};
+  const headers = parseCSVLine(lines[0]).map((h) => h.trim());
+  const idx = {
+    filename: headers.indexOf("filename"),
+    title: headers.indexOf("title"),
+    description: headers.indexOf("description"),
+    tags: headers.indexOf("tags"),
+    publish_at: headers.indexOf("publish_at"),
+  };
+  if (idx.filename === -1) return {};
 
   const map = {};
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCSVLine(lines[i]);
-    const fname = cols[filenameIdx]?.trim();
+    const fname = cols[idx.filename]?.trim();
     if (fname) {
       map[fname] = {
-        title: titleIdx !== -1 ? cols[titleIdx]?.trim() || "" : "",
-        description: descIdx !== -1 ? cols[descIdx]?.trim() || "" : "",
-        tags: tagsIdx !== -1 ? cols[tagsIdx]?.trim() || "" : "",
-        publish_at: pubIdx !== -1 ? cols[pubIdx]?.trim() || "" : "",
+        title: idx.title !== -1 ? cols[idx.title]?.trim() || "" : "",
+        description: idx.description !== -1 ? cols[idx.description]?.trim() || "" : "",
+        tags: idx.tags !== -1 ? cols[idx.tags]?.trim() || "" : "",
+        publish_at: idx.publish_at !== -1 ? cols[idx.publish_at]?.trim() || "" : "",
       };
     }
   }
   return map;
 }
 
-// Simple CSV line parser (handles quoted fields)
-function parseCSVLine(line) {
-  const result = [];
-  let current = "";
-  let inQuotes = false;
-  for (const ch of line) {
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === "," && !inQuotes) {
-      result.push(current);
-      current = "";
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current);
-  return result;
-}
-
-// Escape CSV field
 function esc(val) {
   const s = String(val);
   if (s.includes(",") || s.includes('"') || s.includes("\n")) {
@@ -112,10 +140,10 @@ function esc(val) {
   return s;
 }
 
-const existing = parseCSV(CSV_FILE);
+// ── Build entries ────────────────────────────────────────────
 
-// Build rows
-const rows = [["filename", "title", "description", "tags", "publish_at"]];
+const existing = loadExisting();
+const entries = [];
 let nextTime = startTime ? new Date(startTime.getTime()) : null;
 
 for (let i = 0; i < videos.length; i++) {
@@ -123,7 +151,6 @@ for (let i = 0; i < videos.length; i++) {
   const prev = existing[v] || { title: "", description: "", tags: "", publish_at: "" };
   let pub = prev.publish_at;
 
-  // Auto-fill if --start and --interval given, and no user-set value
   if (startTime && intervalMs && !existing[v]?.publish_at?.trim()) {
     pub = nextTime ? nextTime.toISOString() : "";
     nextTime = new Date(nextTime.getTime() + intervalMs);
@@ -132,36 +159,39 @@ for (let i = 0; i < videos.length; i++) {
   const rowTitle = prev.title || defaultTitle.replace(/\{n\}/g, String(i + 1)).replace(/\{name\}/g, path.parse(v).name);
   const rowDesc = prev.description || defaultDescription.replace(/\{n\}/g, String(i + 1)).replace(/\{name\}/g, path.parse(v).name);
 
-  rows.push([
-    v,
-    rowTitle,
-    rowDesc,
-    prev.tags || "",
-    pub,
-  ]);
+  entries.push({ filename: v, title: rowTitle, description: rowDesc, tags: prev.tags || "", publish_at: pub });
 }
 
-const csvContent = rows.map((r) => r.map(esc).join(",")).join("\n");
-writeFileSync(CSV_FILE, csvContent, "utf-8");
+// ── Write output ─────────────────────────────────────────────
 
-console.log(`Generated ${CSV_FILE} with ${videos.length} file(s)\n`);
-console.log(rows[0].join(" | "));
-console.log("-".repeat(80));
-let skipped = 0;
-for (let i = 1; i < rows.length; i++) {
-  const marker = rows[i][4] ? ` @ ${rows[i][4]}` : " (immediate)";
-  const label = rows[i][1] ? `${rows[i][1]} (${rows[i][0]})` : rows[i][0];
-  if (rows[i][4]) skipped++;
-  console.log(`  ${i}. ${label}${marker}`);
+if (useJson) {
+  writeFileSync(JSON_FILE, JSON.stringify(entries, null, 2), "utf-8");
+  console.log(`Generated ${JSON_FILE} with ${entries.length} file(s)`);
+  console.log("ใช้ editor ใดก็ได้แก้ไข — description รองรับหลายบรรทัด");
+} else {
+  const csvRows = [["filename", "title", "description", "tags", "publish_at"]];
+  for (const e of entries) {
+    csvRows.push([e.filename, e.title, e.description, e.tags, e.publish_at]);
+  }
+  const csvContent = csvRows.map((r) => r.map(esc).join(",")).join("\n");
+  writeFileSync(CSV_FILE, csvContent, "utf-8");
+  console.log(`Generated ${CSV_FILE} with ${entries.length} file(s)`);
 }
-if (startTime && intervalMs) {
-  const total = intervalMs * (videos.length - 1);
-  console.log(`\nSchedule range: ${rows[1]?.[4] || "?"} → ${rows[rows.length - 1]?.[4] || "?"}`);
+
+console.log("");
+entries.forEach((e, i) => {
+  const marker = e.publish_at ? ` @ ${e.publish_at}` : " (immediate)";
+  const label = e.title ? `${e.title} (${e.filename})` : e.filename;
+  console.log(`  ${i + 1}. ${label}${marker}`);
+});
+
+if (startTime && intervalMs && entries.length > 1) {
+  console.log(`\nSchedule range: ${entries[0].publish_at || "?"} → ${entries[entries.length - 1].publish_at || "?"}`);
 }
-console.log(`\nEdit ${CSV_FILE} to customize per-file title, description, tags, and publish time.`);
 
 console.log("\nOptions:");
-console.log("  --start <ISO_DATE>       First publish time (e.g. 2026-07-25T14:00:00Z)");
-console.log("  --interval <DURATION>    Interval between videos (e.g. 30m, 1h, 2d)");
-console.log("  --title <TITLE>          Default title (use {n} for number, {name} for filename)");
-console.log("  --description <TEXT>     Default description (use {n} for number, {name} for filename)");
+console.log("  --json                   Output as schedule.json (รองรับ description หลายบรรทัด)");
+console.log("  --start <ISO_DATE>       First publish time");
+console.log("  --interval <DURATION>    Interval (30m, 1h, 2d)");
+console.log("  --title <TITLE>          Default title ({n} = number, {name} = filename)");
+console.log("  --description <TEXT>     Default description");

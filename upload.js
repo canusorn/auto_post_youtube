@@ -20,37 +20,53 @@ if (!existsSync(UPLOAD_DIR)) {
   process.exit(1);
 }
 
+const JSON_FILE = "schedule.json";
 const CSV_FILE = "schedule.csv";
 const PROFILE_DIR = path.resolve("chrome-profile");
 if (!existsSync(PROFILE_DIR)) {
   mkdirSync(PROFILE_DIR, { recursive: true });
 }
 
-// ── CSV helpers ──────────────────────────────────────────────
+// ── Read schedule (CSV or JSON) ──────────────────────────────
+
+function readCSVLines(filePath) {
+  if (!existsSync(filePath)) return [];
+  const raw = readFileSync(filePath, "utf-8");
+  const lines = [];
+  let current = "";
+  let inQuotes = false;
+  for (const ch of raw) {
+    if (ch === '"') { inQuotes = !inQuotes; current += ch; }
+    else if (ch === "\n" && !inQuotes) { lines.push(current); current = ""; }
+    else { current += ch; }
+  }
+  if (current.trim()) lines.push(current);
+  return lines;
+}
 
 function parseCSVLine(line) {
   const result = [];
   let current = "";
   let inQuotes = false;
   for (const ch of line) {
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === "," && !inQuotes) {
-      result.push(current);
-      current = "";
-    } else {
-      current += ch;
-    }
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === "," && !inQuotes) { result.push(current); current = ""; }
+    else { current += ch; }
   }
   result.push(current);
   return result;
 }
 
 function readSchedule() {
+  // Prefer JSON
+  if (existsSync(JSON_FILE)) {
+    return JSON.parse(readFileSync(JSON_FILE, "utf-8"));
+  }
+  // Fallback to CSV
   if (!existsSync(CSV_FILE)) return null;
-  const lines = readFileSync(CSV_FILE, "utf-8").trim().split("\n");
+  const lines = readCSVLines(CSV_FILE);
   if (lines.length < 2) return null;
-  const headers = lines[0].split(",").map((h) => h.trim());
+  const headers = parseCSVLine(lines[0]).map((h) => h.trim());
   const idx = {
     filename: headers.indexOf("filename"),
     title: headers.indexOf("title"),
@@ -84,7 +100,8 @@ let scheduleEntries = readSchedule();
 let filesToUpload;
 
 if (scheduleEntries) {
-  console.log(`Loaded ${scheduleEntries.length} entries from ${CSV_FILE}`);
+  const srcFile = existsSync(JSON_FILE) ? JSON_FILE : CSV_FILE;
+  console.log(`Loaded ${scheduleEntries.length} entries from ${srcFile}`);
   filesToUpload = scheduleEntries
     .filter((e) => existsSync(path.join(UPLOAD_DIR, e.filename)))
     .map((e) => ({

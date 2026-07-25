@@ -37,19 +37,22 @@ npm install
 ### สร้างตารางกำหนดการ
 
 ```bash
-# สร้าง schedule.csv
+# สร้าง schedule.csv (แก้ใน Excel ได้)
 npm run generate
 
-# หรือกำหนดเวลาเริ่มต้น + ระยะห่าง
+# หรือใช้ --json สำหรับ description หลายบรรทัด
+npm run generate -- --json
+
+# กำหนดเวลาเริ่มต้น + ระยะห่าง
 npm run generate -- --start 2026-07-25T14:00:00Z --interval 1h
 
 # ใส่ title และ description
-npm run generate -- --title "Video #{n}" --interval 1d
+npm run generate -- --title "Video #{n}" --interval 1d --json
 ```
 
-เปิด `schedule.csv` เพื่อแก้ไข:
+เปิด `schedule.json` (หรือ `schedule.csv`) เพื่อแก้ไข:
 - **title** — ชื่อวิดีโอ
-- **description** — คำอธิบาย
+- **description** — คำอธิบาย (ใช้ \n หรือขึ้นบรรทัดใหม่ใน JSON ได้)
 - **tags** — แท็ก
 - **publish_at** — วัน/เวลาเผยแพร่ (ISO 8601) ถ้าว่างจะอัปโหลดเป็นสาธารณะทันที
 
