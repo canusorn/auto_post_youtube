@@ -8,3 +8,5 @@ error.png
 schedule.csv
 chrome-profile/
 firefox-profile/
+token.json
+client_secret.json

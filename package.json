@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "upload": "node upload.js",
+    "upload-api": "node upload-api.js",
     "generate": "node generate.js",
     "postinstall": "npx playwright install firefox"
   },
   "dependencies": {
-    "playwright": "^1.52.0",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "googleapis": "^173.0.0",
+    "playwright": "^1.52.0"
   }
 }
