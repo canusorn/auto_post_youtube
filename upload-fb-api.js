@@ -99,36 +99,38 @@ entries.forEach((e, i) => {
 // ── Resolve Page Token from User Token ──────────────────────
 
 async function resolveToken() {
-  if (process.env.FACEBOOK_ACCESS_TOKEN && PAGE_ID) {
-    return; // already have page token + id
-  }
-  if (!process.env.FACEBOOK_USER_TOKEN) {
+  // Always verify by fetching page list
+  const userToken = process.env.FACEBOOK_USER_TOKEN || process.env.FACEBOOK_ACCESS_TOKEN;
+  if (!userToken) {
     console.error("Need FACEBOOK_USER_TOKEN or FACEBOOK_ACCESS_TOKEN in .env");
     process.exit(1);
   }
-  console.log("Exchanging User Token for Page Token...");
-  const url = `https://graph.facebook.com/${FACEBOOK_API_VERSION}/me/accounts?access_token=${process.env.FACEBOOK_USER_TOKEN}`;
+  console.log("Fetching your pages...");
+  const url = `https://graph.facebook.com/${FACEBOOK_API_VERSION}/me/accounts?access_token=${userToken}`;
   const res = await fetch(url);
   const data = await res.json();
   if (!data.data || data.data.length === 0) {
-    console.error("No pages found. Make sure you granted pages_show_list permission.");
-    console.error("Response:", JSON.stringify(data));
+    console.error("No pages found. Response:", JSON.stringify(data));
+    console.error("Tip: Token must have pages_show_list + pages_manage_posts permissions");
     process.exit(1);
   }
+  console.log("Your pages:");
+  data.data.forEach((p, i) => console.log(`  ${i + 1}. ${p.name} (ID: ${p.id})`));
+
   if (PAGE_ID) {
     const page = data.data.find((p) => p.id === PAGE_ID);
     if (page) {
       ACCESS_TOKEN = page.access_token;
-      console.log(`  Found page: ${page.name}`);
+      console.log(`Using page: ${page.name}`);
     } else {
-      console.error(`Page ID ${PAGE_ID} not found in your pages.`);
+      console.error(`Page ID ${PAGE_ID} not found. Pick one from the list above.`);
       process.exit(1);
     }
   } else {
     const page = data.data[0];
     PAGE_ID = page.id;
     ACCESS_TOKEN = page.access_token;
-    console.log(`  Using page: ${page.name} (ID: ${PAGE_ID})`);
+    console.log(`Using page: ${page.name}`);
   }
 }
 
