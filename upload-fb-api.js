@@ -161,10 +161,9 @@ async function uploadVideo(entry) {
     body.append("description", caption);
     console.log(`  file_url: ${fileUrl}`);
   } else {
-    // Direct upload via form-data
-    const FormData = (await import("form-data")).default;
+    // Direct upload via form-data (built-in FormData + Blob)
     body = new FormData();
-    body.append("source", readFileSync(videoPath), entry.filename);
+    body.append("source", new Blob([readFileSync(videoPath)], { type: "video/mp4" }), entry.filename);
     body.append("description", caption);
   }
 
