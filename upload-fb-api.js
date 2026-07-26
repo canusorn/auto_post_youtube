@@ -146,23 +146,28 @@ async function uploadVideo(entry) {
   console.log(`\nUploading: ${entry.filename}`);
   console.log(`  Size: ${(fileSize / 1024 / 1024).toFixed(1)} MB`);
 
-  // Use file_url approach — requires video hosted at public URL
-  // Set FILE_HOST_URL in .env to enable auto-hosting via simple server
   let fileUrl = entry.file_url;
   if (!fileUrl && process.env.FILE_HOST_URL) {
     fileUrl = process.env.FILE_HOST_URL + "/" + encodeURIComponent(entry.filename);
   }
-  if (!fileUrl) {
-    console.error("  ✗ Need file_url. Set FILE_HOST_URL in .env or add file_url column to CSV.");
-    console.error("  Tip: Host files via ngrok: npx http-server upload -p 3000 --cors");
-    console.error("       Then set: FILE_HOST_URL=https://your-ngrok-url");
-    return;
-  }
 
   const endpoint = `https://graph.facebook.com/${FACEBOOK_API_VERSION}/${PAGE_ID}/videos?access_token=${ACCESS_TOKEN}`;
-  const body = new URLSearchParams();
-  body.append("file_url", fileUrl);
-  body.append("description", caption);
+
+  let body;
+  if (fileUrl) {
+    // file_url approach — host video at public URL
+    body = new URLSearchParams();
+    body.append("file_url", fileUrl);
+    body.append("description", caption);
+    console.log(`  file_url: ${fileUrl}`);
+  } else {
+    // Direct upload via form-data
+    const FormData = (await import("form-data")).default;
+    body = new FormData();
+    body.append("source", readFileSync(videoPath), entry.filename);
+    body.append("description", caption);
+  }
+
   if (entry.publish_at) {
     const ts = Math.floor(new Date(entry.publish_at).getTime() / 1000);
     if (!isNaN(ts)) {
@@ -172,7 +177,10 @@ async function uploadVideo(entry) {
     }
   }
 
-  const res = await fetch(endpoint, { method: "POST", body });
+  const opts = { method: "POST", body };
+  if (body.getHeaders) opts.headers = body.getHeaders();
+
+  const res = await fetch(endpoint, opts);
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 500) }; }
