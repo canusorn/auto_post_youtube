@@ -1,6 +1,7 @@
 import "dotenv/config";
-import { existsSync, readdirSync, readFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync, createReadStream } from "fs";
 import path from "path";
+import FormData from "form-data";
 
 const JSON_FILE = "schedule.json";
 const CSV_FILE = "schedule.csv";
@@ -143,7 +144,7 @@ async function uploadVideo(entry) {
   const endpoint = `https://graph.facebook.com/${FACEBOOK_API_VERSION}/${PAGE_ID}/videos`;
 
   const body = new FormData();
-  body.append("source", new File([readFileSync(videoPath)], entry.filename));
+  body.append("source", createReadStream(videoPath));
   body.append("description", caption);
   body.append("access_token", ACCESS_TOKEN);
 
@@ -159,7 +160,7 @@ async function uploadVideo(entry) {
   console.log(`\nUploading: ${entry.filename}`);
   console.log(`  Size: ${(fileSize / 1024 / 1024).toFixed(1)} MB`);
 
-  const res = await fetch(endpoint, { method: "POST", body });
+  const res = await fetch(endpoint, { method: "POST", body, headers: body.getHeaders() });
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 500) }; }
