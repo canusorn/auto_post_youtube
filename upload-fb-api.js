@@ -141,53 +141,34 @@ async function uploadVideo(entry) {
   const videoPath = path.join(UPLOAD_DIR, entry.filename);
   const fileSize = existsSync(videoPath) ? readFileSync(videoPath).length : 0;
   const caption = entry.description || "";
-  const baseUrl = `https://graph.facebook.com/${FACEBOOK_API_VERSION}/${PAGE_ID}/videos`;
 
   console.log(`\nUploading: ${entry.filename}`);
   console.log(`  Size: ${(fileSize / 1024 / 1024).toFixed(1)} MB`);
 
-  // ── Step 1: Start upload session ──
-  const startUrl = `${baseUrl}?access_token=${ACCESS_TOKEN}&upload_phase=start&file_size=${fileSize}`;
-  const startRes = await fetch(startUrl, { method: "POST" });
-  const startData = await startRes.json();
-  if (!startData.upload_session_id) {
-    console.error(`  ✗ Failed to start upload session: ${JSON.stringify(startData)}`);
-    return;
-  }
-  console.log(`  Session: ${startData.upload_session_id}`);
-
-  // ── Step 2: Transfer (upload file) ──
-  const transferUrl = `${baseUrl}?access_token=${ACCESS_TOKEN}&upload_phase=transfer&upload_session_id=${startData.upload_session_id}&start_offset=${startData.start_offset || 0}`;
-  const fileStream = createReadStream(videoPath);
-  const transferRes = await fetch(transferUrl, { method: "POST", body: fileStream, headers: { "Content-Type": "video/mp4" } });
-  const transferData = await transferRes.json();
-  if (!transferData.upload_session_id) {
-    console.error(`  ✗ Failed to transfer: ${JSON.stringify(transferData)}`);
-    return;
-  }
-  console.log(`  Transferred: ${transferData.start_offset} / ${fileSize} bytes`);
-
-  // ── Step 3: Finish (set metadata + publish) ──
-  const finishBody = new FormData();
-  finishBody.append("description", caption);
+  // Simple POST with source as file
+  const endpoint = `https://graph.facebook.com/${FACEBOOK_API_VERSION}/${PAGE_ID}/videos?access_token=${ACCESS_TOKEN}`;
+  const body = new FormData();
+  body.append("source", createReadStream(videoPath));
+  body.append("description", caption);
   if (entry.publish_at) {
     const ts = Math.floor(new Date(entry.publish_at).getTime() / 1000);
     if (!isNaN(ts)) {
-      finishBody.append("published", "false");
-      finishBody.append("scheduled_publish_time", String(ts));
+      body.append("published", "false");
+      body.append("scheduled_publish_time", String(ts));
       console.log(`  Schedule: ${entry.publish_at}`);
     }
   }
-  const finishUrl = `${baseUrl}?access_token=${ACCESS_TOKEN}&upload_phase=finish&upload_session_id=${startData.upload_session_id}`;
-  const finishRes = await fetch(finishUrl, { method: "POST", body: finishBody, headers: finishBody.getHeaders() });
-  const finishData = await finishRes.json();
-  if (finishData.id) {
-    console.log(`  ✓ Uploaded! Video ID: ${finishData.id}`);
-    if (finishData.scheduled_publish_time) {
-      console.log(`  ✓ Scheduled for: ${new Date(finishData.scheduled_publish_time * 1000).toISOString()}`);
-    }
+
+  const res = await fetch(endpoint, { method: "POST", body, headers: body.getHeaders() });
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 500) }; }
+  if (data.id) {
+    console.log(`  ✓ Uploaded! Video ID: ${data.id}`);
+    if (data.scheduled_publish_time)
+      console.log(`  ✓ Scheduled for: ${new Date(data.scheduled_publish_time * 1000).toISOString()}`);
   } else {
-    console.error(`  ✗ Failed to finish: ${JSON.stringify(finishData)}`);
+    console.error(`  ✗ Failed: ${JSON.stringify(data)}`);
   }
 }
 
