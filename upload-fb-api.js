@@ -7,11 +7,12 @@ const CSV_FILE = "schedule.csv";
 const UPLOAD_DIR = path.resolve("upload");
 
 const FACEBOOK_API_VERSION = "v22.0";
-const PAGE_ID = process.env.FACEBOOK_PAGE_ID;
-const ACCESS_TOKEN = process.env.FACEBOOK_ACCESS_TOKEN;
+let PAGE_ID = process.env.FACEBOOK_PAGE_ID;
+let ACCESS_TOKEN = process.env.FACEBOOK_ACCESS_TOKEN || process.env.FACEBOOK_USER_TOKEN;
 
-if (!PAGE_ID || !ACCESS_TOKEN) {
-  console.error("Missing FACEBOOK_PAGE_ID or FACEBOOK_ACCESS_TOKEN in .env");
+if (!PAGE_ID && !ACCESS_TOKEN) {
+  console.error("ใส่ FACEBOOK_USER_TOKEN ใน .env (ใช้ User Token จาก Access Token Tool)");
+  console.error("หรือใส่ FACEBOOK_PAGE_ID + FACEBOOK_ACCESS_TOKEN");
   process.exit(1);
 }
 
@@ -95,6 +96,42 @@ entries.forEach((e, i) => {
   console.log(`  ${i + 1}. ${e.filename}${sched}`);
 });
 
+// ── Resolve Page Token from User Token ──────────────────────
+
+async function resolveToken() {
+  if (process.env.FACEBOOK_ACCESS_TOKEN && PAGE_ID) {
+    return; // already have page token + id
+  }
+  if (!process.env.FACEBOOK_USER_TOKEN) {
+    console.error("Need FACEBOOK_USER_TOKEN or FACEBOOK_ACCESS_TOKEN in .env");
+    process.exit(1);
+  }
+  console.log("Exchanging User Token for Page Token...");
+  const url = `https://graph.facebook.com/${FACEBOOK_API_VERSION}/me/accounts?access_token=${process.env.FACEBOOK_USER_TOKEN}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!data.data || data.data.length === 0) {
+    console.error("No pages found. Make sure you granted pages_show_list permission.");
+    console.error("Response:", JSON.stringify(data));
+    process.exit(1);
+  }
+  if (PAGE_ID) {
+    const page = data.data.find((p) => p.id === PAGE_ID);
+    if (page) {
+      ACCESS_TOKEN = page.access_token;
+      console.log(`  Found page: ${page.name}`);
+    } else {
+      console.error(`Page ID ${PAGE_ID} not found in your pages.`);
+      process.exit(1);
+    }
+  } else {
+    const page = data.data[0];
+    PAGE_ID = page.id;
+    ACCESS_TOKEN = page.access_token;
+    console.log(`  Using page: ${page.name} (ID: ${PAGE_ID})`);
+  }
+}
+
 // ── Upload via Graph API ──────────────────────────────────────
 
 async function uploadVideo(entry) {
@@ -121,7 +158,9 @@ async function uploadVideo(entry) {
   console.log(`  Size: ${(fileSize / 1024 / 1024).toFixed(1)} MB`);
 
   const res = await fetch(endpoint, { method: "POST", body });
-  const data = await res.json();
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 500) }; }
 
   if (data.id) {
     console.log(`  ✓ Uploaded! Video ID: ${data.id}`);
@@ -136,6 +175,7 @@ async function uploadVideo(entry) {
 // ── Main ──────────────────────────────────────────────────────
 
 async function main() {
+  await resolveToken();
   for (const entry of entries) {
     await uploadVideo(entry);
   }
