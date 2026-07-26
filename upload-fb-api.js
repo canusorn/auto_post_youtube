@@ -1,7 +1,6 @@
 import "dotenv/config";
-import { existsSync, readdirSync, readFileSync, createReadStream } from "fs";
+import { existsSync, readdirSync, readFileSync } from "fs";
 import path from "path";
-import FormData from "form-data";
 
 const JSON_FILE = "schedule.json";
 const CSV_FILE = "schedule.csv";
@@ -61,6 +60,7 @@ function readSchedule() {
     description: headers.indexOf("description"),
     tags: headers.indexOf("tags"),
     publish_at: headers.indexOf("publish_at"),
+    file_url: headers.indexOf("file_url"),
   };
   if (idx.filename === -1) return null;
   const entries = [];
@@ -73,6 +73,7 @@ function readSchedule() {
       title: idx.title !== -1 ? cols[idx.title]?.trim() || "" : "",
       description: idx.description !== -1 ? (cols[idx.description]?.trim() || "").replace(/\\n/g, "\n") : "",
       publish_at: idx.publish_at !== -1 ? cols[idx.publish_at]?.trim() || "" : "",
+      file_url: idx.file_url !== -1 ? cols[idx.file_url]?.trim() || "" : "",
     });
   }
   return entries;
@@ -85,7 +86,7 @@ if (!existsSync(UPLOAD_DIR)) { console.error("upload folder not found"); process
 let entries = readSchedule();
 if (!entries) {
   const files = readdirSync(UPLOAD_DIR).filter((f) => videoExts.has(path.extname(f).toLowerCase())).sort();
-  entries = files.map((f) => ({ filename: f, title: "", description: "", publish_at: "" }));
+  entries = files.map((f) => ({ filename: f, title: "", description: "", publish_at: "", file_url: "" }));
 }
 
 entries = entries.filter((e) => existsSync(path.join(UPLOAD_DIR, e.filename)));
@@ -145,10 +146,22 @@ async function uploadVideo(entry) {
   console.log(`\nUploading: ${entry.filename}`);
   console.log(`  Size: ${(fileSize / 1024 / 1024).toFixed(1)} MB`);
 
-  // Simple POST with source as file
+  // Use file_url approach — requires video hosted at public URL
+  // Set FILE_HOST_URL in .env to enable auto-hosting via simple server
+  let fileUrl = entry.file_url;
+  if (!fileUrl && process.env.FILE_HOST_URL) {
+    fileUrl = process.env.FILE_HOST_URL + "/" + encodeURIComponent(entry.filename);
+  }
+  if (!fileUrl) {
+    console.error("  ✗ Need file_url. Set FILE_HOST_URL in .env or add file_url column to CSV.");
+    console.error("  Tip: Host files via ngrok: npx http-server upload -p 3000 --cors");
+    console.error("       Then set: FILE_HOST_URL=https://your-ngrok-url");
+    return;
+  }
+
   const endpoint = `https://graph.facebook.com/${FACEBOOK_API_VERSION}/${PAGE_ID}/videos?access_token=${ACCESS_TOKEN}`;
-  const body = new FormData();
-  body.append("source", createReadStream(videoPath));
+  const body = new URLSearchParams();
+  body.append("file_url", fileUrl);
   body.append("description", caption);
   if (entry.publish_at) {
     const ts = Math.floor(new Date(entry.publish_at).getTime() / 1000);
@@ -159,12 +172,12 @@ async function uploadVideo(entry) {
     }
   }
 
-  const res = await fetch(endpoint, { method: "POST", body, headers: body.getHeaders() });
+  const res = await fetch(endpoint, { method: "POST", body });
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 500) }; }
   if (data.id) {
-    console.log(`  ✓ Uploaded! Video ID: ${data.id}`);
+    console.log(`  ✓ Posted! Video ID: ${data.id}`);
     if (data.scheduled_publish_time)
       console.log(`  ✓ Scheduled for: ${new Date(data.scheduled_publish_time * 1000).toISOString()}`);
   } else {
